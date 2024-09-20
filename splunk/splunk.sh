@@ -191,10 +191,16 @@ function setup_splunk {
         echo "Usage: ./splunk.sh <option> <forward-server-ip>"
         exit
     fi
+
+    sudo useradd splunk
+    sudo passwd splunk
+
     install_splunk "$1" "$2"
     sudo $SPLUNKDIR/bin/splunk start --accept-license
     if [ "$IP" == "indexer" ]; then
         setup_indexer
+    else
+        setup_forward_server "$IP"
     fi
 }
 
@@ -298,7 +304,7 @@ function add_firewall_logs {
 # Adds monitors for package managers (for monitoring installed packages)
 function add_package_logs {
     print_banner "Adding package logs"
-
+    
     INDEX="misc"
     if command -v dpkg &>/dev/null; then
         echo "[*] Adding monitors for dpkg logs"
@@ -471,7 +477,7 @@ function add_additional_logs {
     echo "[*] Indexes:" "${INDEXES[@]}"
     for index in "${INDEXES[@]}"; do
         echo "[*] Would you like to add additional log sources for index '$index'?"
-        read -r -p "(y/n): " option
+        read -r -p "(y/N): " option
         option=$(echo "$option" | tr -d ' ') # truncates any spaces accidentally put in
 
         sources=()
@@ -537,50 +543,62 @@ function add_custom_config {
 
 # Install auditd for file monitoring
 function install_auditd {
-    print_banner "Installing auditd (file monitor)"
-    sudo wget $GITHUB_URL/splunk_setup/auditd.sh
-    sudo chmod +x auditd.sh
-    ./auditd.sh
-    add_monitor "/var/log/audit/audit.log" "system"
+    echo "[*] Would you like to install/setup auditd?"
+    read -r -p "(y/N): " option
+    option=$(echo "$option" | tr -d ' ') # truncates any spaces accidentally put in
+    
+    if [ "$option" == "y" ]; then
+        print_banner "Installing auditd (file monitor)"
+        sudo wget $GITHUB_URL/splunk_setup/auditd.sh
+        sudo chmod +x auditd.sh
+        ./auditd.sh
+        add_monitor "/var/log/audit/audit.log" "system"
+    fi
 }
 
 # Install snoopy for bash logging
 function install_snoopy {
-    print_banner "Installing Snoopy (command logger)"
-    wget -O install-snoopy.sh https://github.com/a2o/snoopy/raw/install/install/install-snoopy.sh
-    chmod 755 install-snoopy.sh
-    if command -v snoopyctl &>/dev/null; then
-        echo "[*] Snoopy is already installed"
-        return
-    fi
-    # If on Fedora, install these programs
-    if command -v dnf &>/dev/null; then
-        sudo dnf install -y gcc gzip make procps socat tar wget
-    fi
-    if ! sudo ./install-snoopy.sh stable; then
-        echo "[X] ERROR: Install failed. If you would like to try installing an older version, "
-        echo "    please run \`./install-snoopy.sh X.Y.Z\` with X.Y.Z being the version number."
-        echo ""
-        echo "Suggested versions:"
-        echo "    - 2.5.1/stable (current, 2022-09-28)"
-        echo "    - 2.4.15 (2021-10-17)"
-        echo "    - 2.3.2 (2015-05-28)"
-        echo ""
-    else
-        SNOOPY_CONFIG='/etc/snoopy.ini'
-        if sudo [ -f $SNOOPY_CONFIG ]; then
-            sudo touch /var/log/snoopy.log
-            # Unfortunately required by snoopy in order to use file other than syslog/messages
-            SNOOPY_LOG='/var/log/snoopy.log'
-            sudo chmod 666 $SNOOPY_LOG
-            echo "filter_chain = \"exclude_spawns_of:splunkd,btool\"" | sudo tee -a $SNOOPY_CONFIG
-            echo "output = file:$SNOOPY_LOG" | sudo tee -a $SNOOPY_CONFIG
-            echo "[*] Set Snoopy output to $SNOOPY_LOG."
-            sudo $SPLUNKDIR/bin/splunk add monitor "$SNOOPY_LOG" -index "snoopy" -sourcetype "snoopy"
-        else
-            echo "[X] ERROR: Could not find Snoopy config file. Please add \`output = file:/var/log/snoopy.log\` to the end of the config."
+    echo "[*] Would you like to install/setup snoopy?"
+    read -r -p "(y/N): " option
+    option=$(echo "$option" | tr -d ' ') # truncates any spaces accidentally put in
+
+    if [ "$option" == "y" ]; then
+        print_banner "Installing Snoopy (command logger)"
+        wget -O install-snoopy.sh https://github.com/a2o/snoopy/raw/install/install/install-snoopy.sh
+        chmod 755 install-snoopy.sh
+        if command -v snoopyctl &>/dev/null; then
+            echo "[*] Snoopy is already installed"
+            return
         fi
-        echo "[*] Snoopy installed successfully."
+        # If on Fedora, install these programs
+        if command -v dnf &>/dev/null; then
+            sudo dnf install -y gcc gzip make procps socat tar wget
+        fi
+        if ! sudo ./install-snoopy.sh stable; then
+            echo "[X] ERROR: Install failed. If you would like to try installing an older version, "
+            echo "    please run \`./install-snoopy.sh X.Y.Z\` with X.Y.Z being the version number."
+            echo ""
+            echo "Suggested versions:"
+            echo "    - 2.5.1/stable (current, 2022-09-28)"
+            echo "    - 2.4.15 (2021-10-17)"
+            echo "    - 2.3.2 (2015-05-28)"
+            echo ""
+        else
+            SNOOPY_CONFIG='/etc/snoopy.ini'
+            if sudo [ -f $SNOOPY_CONFIG ]; then
+                sudo touch /var/log/snoopy.log
+                # Unfortunately required by snoopy in order to use file other than syslog/messages
+                SNOOPY_LOG='/var/log/snoopy.log'
+                sudo chmod 666 $SNOOPY_LOG
+                echo "filter_chain = \"exclude_spawns_of:splunkd,btool\"" | sudo tee -a $SNOOPY_CONFIG
+                echo "output = file:$SNOOPY_LOG" | sudo tee -a $SNOOPY_CONFIG
+                echo "[*] Set Snoopy output to $SNOOPY_LOG."
+                sudo $SPLUNKDIR/bin/splunk add monitor "$SNOOPY_LOG" -index "snoopy" -sourcetype "snoopy"
+            else
+                echo "[X] ERROR: Could not find Snoopy config file. Please add \`output = file:/var/log/snoopy.log\` to the end of the config."
+            fi
+            echo "[*] Snoopy installed successfully."
+        fi
     fi
 }
 #####################################################
@@ -611,11 +629,11 @@ function main {
     fi
 
     check_prereqs "$0" "$1" "$2"
+    create_splunk_user
     setup_splunk "$1" "$2"
+
     setup_monitors
-    if [ "$IP" != "indexer" ]; then
-        setup_forward_server "$2"
-    fi
+    add_additional_logs
 
     install_auditd
     install_snoopy
@@ -626,14 +644,13 @@ function main {
         # add_custom_config
     # fi
 
-    add_additional_logs
     sudo $SPLUNKDIR/bin/splunk stop
 
     print_banner "Enabling systemd service"
     sudo $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1
 
     # Fixes weird permissions bug that happens sometimes
-    # sudo chown -R splunk:splunk $SPLUNKDIR
+    sudo chown -R splunk:splunk $SPLUNKDIR
 
     print_banner "Starting Splunk"
     sudo $SPLUNKDIR/bin/splunk start
