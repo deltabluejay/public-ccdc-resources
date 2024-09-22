@@ -205,16 +205,24 @@ function setup_splunk {
     sudo setfacl -R -m u:splunk:rx /var/log/
 
     install_splunk "$1" "$2"
-    sudo -H -u splunk $SPLUNKDIR/bin/splunk start --accept-license
+    echo "[*] Enabling systemd service"
+    sudo $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1
+    echo "[*] Starting splunk"
+    sudo -H -u splunk $SPLUNKDIR/bin/splunk start --accept-license --no-prompt
     if [ "$IP" == "indexer" ]; then
         setup_indexer
     else
         setup_forward_server "$IP"
     fi
 
+    # TODO: fix password by pulling from /etc/passwd?
+    sudo -H -u splunk $SPLUNKDIR/bin/splunk add user splunk -role Admin -password temporarypassword
+
     sudo chown -R splunk:splunk $SPLUNKDIR
     # TODO: add firewall rules
-}
+    sudo iptables -A INPUT -p tcp -m multiport --dport 8000,9443 -j ACCEPT
+    sudo iptables -A INPUT -p tcp --dport 9997 -j ACCEPT
+-}
 
 # Checks for existence of a file or directory and add it as a monitor if it exists
 # Arguments:
@@ -301,7 +309,7 @@ function add_firewall_logs {
         echo "[*] Enabling iptables logging"
         LOGGING_LEVEL=1
         # Not sure if the order of where this rule is placed in the chain matters or not
-        sudo iptables -A INPUT -j LOG --log-prefix "iptables: " --log-level $LOGGING_LEVEL
+        sudo iptables -A INPUT -j LOG --log-prefix "[iptables] CHAIN=INPUT ACTION=DROP: " --log-level $LOGGING_LEVEL
         # sudo iptables -A OUTPUT -j LOG --log-prefix "iptables: " --log-level $LOGGING_LEVEL
         # sudo iptables -A FORWARD -j LOG --log-prefix "iptables: " --log-level $LOGGING_LEVEL
         
@@ -519,7 +527,7 @@ function setup_monitors {
     if [ "$option" == "y" ]; then
         # Add monitors
         add_system_logs
-        add_firewall_logs
+        # add_firewall_logs
         add_package_logs
         add_ssh_key_logs
         add_web_logs
@@ -659,12 +667,6 @@ function main {
         # add_dashboard
         # add_custom_config
     # fi
-
-    print_banner "Enabling systemd service"
-    sudo -H -u splunk $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1
-
-    print_banner "Starting Splunk"
-    sudo -H -u splunk $SPLUNKDIR/bin/splunk start
 
     print_banner "End of script"
     echo "[*] You can add future additional monitors with 'sudo -H -u splunk $SPLUNKDIR/bin/splunk add monitor <PATH> -index <INDEX>'"
