@@ -103,7 +103,7 @@ function print_banner {
 # Downloads and installs correct version for distribution
 function install_splunk {
     # If Splunk does not already exist:
-    if [[ ! -d $SPLUNKDIR ]]; then
+    if sudo [ ! -e "$SPLUNKDIR/bin/splunk" ]; then
         # Determine distribution type and install
         case "$1" in
             deb|debian )
@@ -195,19 +195,24 @@ function setup_splunk {
     fi
 
     # Create splunk user/group
+    echo "[*] Creating splunk user and group"
     sudo useradd splunk -d "$SPLUNKDIR"
     sudo groupadd splunk
+    echo "[*] Please provide user 'splunk' when prompted later in the script"
 
     # Set ACL to allow splunk to read any log files (execute needed for directories)
+    echo "[*] Giving splunk user access to /var/log/"
     sudo setfacl -R -m u:splunk:rx /var/log/
 
     install_splunk "$1" "$2"
+    sudo -H -u splunk $SPLUNKDIR/bin/splunk start --accept-license
     if [ "$IP" == "indexer" ]; then
         setup_indexer
     else
         setup_forward_server "$IP"
     fi
 
+    sudo chown -R splunk:splunk $SPLUNKDIR
     # TODO: add firewall rules
 }
 
@@ -658,11 +663,8 @@ function main {
     print_banner "Enabling systemd service"
     sudo -H -u splunk $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1
 
-    # Fixes weird permissions bug that happens sometimes
-    sudo chown -R splunk:splunk $SPLUNKDIR
-
     print_banner "Starting Splunk"
-    sudo -H -u splunk $SPLUNKDIR/bin/splunk start --accept-license
+    sudo -H -u splunk $SPLUNKDIR/bin/splunk start
 
     print_banner "End of script"
     echo "[*] You can add future additional monitors with 'sudo -H -u splunk $SPLUNKDIR/bin/splunk add monitor <PATH> -index <INDEX>'"
