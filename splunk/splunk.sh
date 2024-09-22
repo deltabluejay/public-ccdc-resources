@@ -6,7 +6,6 @@
 DEBUG_LOG='/var/log/ccdc/setup/splunk.log'
 GITHUB_URL='https://raw.githubusercontent.com/BYU-CCDC/public-ccdc-resources/main'
 INDEXES=( 'system' 'web' 'network' 'windows' 'misc' 'snoopy' )
-SPLUNKDIR="/opt/splunk"
 
 # Download URLs
 IP="$2"
@@ -15,6 +14,7 @@ if [ "$IP" == "indexer" ] || [ "$IP" == "i" ]; then
     deb="https://download.splunk.com/products/splunk/releases/9.3.1/linux/splunk-9.3.1-0b8d769cb912-linux-2.6-amd64.deb"
     rpm="https://download.splunk.com/products/splunk/releases/9.3.1/linux/splunk-9.3.1-0b8d769cb912.x86_64.rpm"
     tgz="https://download.splunk.com/products/splunk/releases/9.3.1/linux/splunk-9.3.1-0b8d769cb912-Linux-x86_64.tgz"
+    SPLUNKDIR="/opt/splunk"
 else
     deb="https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912-linux-2.6-amd64.deb"
     rpm="https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912.x86_64.rpm"
@@ -22,6 +22,7 @@ else
     arm_deb="https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912-Linux-armv8.deb"
     arm_rpm="https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912.aarch64.rpm"
     arm_tgz="https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912-Linux-armv8.tgz"
+    SPLUNKDIR="/opt/splunkforwarder"
 fi
 #####################################################
 
@@ -205,24 +206,32 @@ function setup_splunk {
     sudo setfacl -R -m u:splunk:rx /var/log/
 
     install_splunk "$1" "$2"
-    echo "[*] Enabling systemd service"
-    sudo $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1
+    sudo chown -R splunk:splunk $SPLUNKDIR
+
+    if sudo [ ! -e "$SPLUNKDIR/bin/splunk" ]; then
+        echo "[X] ERROR: Splunk failed to install"
+        exit 1
+    fi
+
+    if command -v systemctl &> /dev/null; then
+        echo "[*] Enabling systemd service"
+        sudo $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1 -user splunk
+    fi
+
     echo "[*] Starting splunk"
     sudo -H -u splunk $SPLUNKDIR/bin/splunk start --accept-license --no-prompt
     if [ "$IP" == "indexer" ]; then
         setup_indexer
+        # TODO: add firewall rules
+        sudo iptables -I INPUT 1 -p tcp -m multiport --dport 8000,9443 -j ACCEPT
+        sudo iptables -I INPUT 1 -p tcp --dport 9997 -j ACCEPT
     else
         setup_forward_server "$IP"
     fi
 
     # TODO: fix password by pulling from /etc/passwd?
     sudo -H -u splunk $SPLUNKDIR/bin/splunk add user splunk -role Admin -password temporarypassword
-
-    sudo chown -R splunk:splunk $SPLUNKDIR
-    # TODO: add firewall rules
-    sudo iptables -A INPUT -p tcp -m multiport --dport 8000,9443 -j ACCEPT
-    sudo iptables -A INPUT -p tcp --dport 9997 -j ACCEPT
--}
+}
 
 # Checks for existence of a file or directory and add it as a monitor if it exists
 # Arguments:
