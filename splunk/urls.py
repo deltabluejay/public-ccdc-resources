@@ -29,6 +29,8 @@ def format_template(template, item, indexer=False):
     version = item[0]
     name = item[1]
     url = item[2]
+    template = template.replace('$VERSION', version)
+
     if name.endswith('x64-release.msi'):
         # Windows 64-bit
         if indexer:
@@ -122,40 +124,103 @@ def format_template(template, item, indexer=False):
 
 markdown_template = '''\
 # Splunk Download URLs
+Version: $VERSION
+
 ## Indexer
-Windows x64 (64 bit) msi: [$INDEXER_WINDOWS_X64]($INDEXER_WINDOWS_X64)<br>
-Linux .tgz: [$INDEXER_TGZ]($INDEXER_TGZ)<br>
-Linux .deb: [$INDEXER_DEB]($INDEXER_DEB)<br>
-Linux .rpm: [$INDEXER_RPM]($INDEXER_RPM)<br>
-Mac Intel .dmg: [$INDEXER_MAC_INTEL_DMG]($INDEXER_MAC_INTEL_DMG)<br>
-Mac Intel .tgz: [$INDEXER_MAC_INTEL_TGZ]($INDEXER_MAC_INTEL_TGZ)<br>
+Windows x64 (64 bit) msi:
+- [$INDEXER_WINDOWS_X64]($INDEXER_WINDOWS_X64)
+
+Linux .tgz:
+- [$INDEXER_TGZ]($INDEXER_TGZ)
+
+Linux .deb:
+- [$INDEXER_DEB]($INDEXER_DEB)
+
+Linux .rpm:
+- [$INDEXER_RPM]($INDEXER_RPM)
+
+Mac Intel .dmg:
+- [$INDEXER_MAC_INTEL_DMG]($INDEXER_MAC_INTEL_DMG)
+
+Mac Intel .tgz:
+- [$INDEXER_MAC_INTEL_TGZ]($INDEXER_MAC_INTEL_TGZ)
+
 
 ## Forwarder
-Windows x64 (64 bit) msi: [$WINDOWS_X64]($WINDOWS_X64)<br>
-Windows x86 (32 bit) msi: [$WINDOWS_X86]($WINDOWS_X86)<br>
-Linux .tgz: [$TGZ]($TGZ)<br>
-Linux .deb: [$DEB]($DEB)<br>
-Linux .rpm: [$RPM]($RPM)<br>
-S390X .rpm: [$S390X_RPM]($S390X_RPM)<br>
-S390X .tgz: [$S390X_TGZ]($S390X_TGZ)<br>
-ARM .rpm: [$ARM_RPM]($ARM_RPM)<br>
-ARM .deb: [$ARM_DEB]($ARM_DEB)<br>
-ARM .tgz: [$ARM_TGZ]($ARM_TGZ)<br>
-PPCLE .tgz: [$PPCLE_TGZ]($PPCLE_TGZ)<br>
-PPCLE .rpm: [$PPCLE_RPM]($PPCLE_RPM)<br>
-Mac Intel .dmg: [$MAC_INTEL_DMG]($MAC_INTEL_DMG)<br>
-Mac Intel .tgz: [$MAC_INTEL_TGZ]($MAC_INTEL_TGZ)<br>
-Mac Universal .dmg: [$MAC_UNIV_DMG]($MAC_UNIV_DMG)<br>
-Mac Universal .tgz: [$MAC_UNIV_TGZ]($MAC_UNIV_TGZ)<br>
-FreeBSD12 .tgz: [$FREEBSD12_TGZ]($FREEBSD12_TGZ)<br>
-FreeBSD12 .txz: [$FREEBSD12_TXZ]($FREEBSD12_TXZ)<br>
-FreeBSD13 .tgz: [$FREEBSD13_TGZ]($FREEBSD13_TGZ)<br>
-FreeBSD13 .txz: [$FREEBSD13_TXZ]($FREEBSD13_TXZ)<br>
-Solaris Sparc .p5p: [$SOLARIS_SPARC_P5P]($SOLARIS_SPARC_P5P)<br>
-Solaris Sparc .z: [$SOLARIS_SPARC_Z]($SOLARIS_SPARC_Z)<br>
-Solaris Intel .p5p: [$SOLARIS_INTEL_P5P]($SOLARIS_INTEL_P5P)<br>
-Solaris Intel .tar.z: [$SOLARIS_INTEL_TARZ]($SOLARIS_INTEL_TARZ)<br>
-AIX PPC .tgz: [$AIX_PPC_TGZ]($AIX_PPC_TGZ)<br>
+Windows x64 (64 bit) msi:
+- [$WINDOWS_X64]($WINDOWS_X64)
+
+Windows x86 (32 bit) msi:
+- [$WINDOWS_X86]($WINDOWS_X86)
+
+Linux .tgz:
+- [$TGZ]($TGZ)
+
+Linux .deb:
+- [$DEB]($DEB)
+
+Linux .rpm:
+- [$RPM]($RPM)
+
+S390X .rpm:
+- [$S390X_RPM]($S390X_RPM)
+
+S390X .tgz:
+- [$S390X_TGZ]($S390X_TGZ)
+
+ARM .rpm:
+- [$ARM_RPM]($ARM_RPM)
+
+ARM .deb:
+- [$ARM_DEB]($ARM_DEB)
+
+ARM .tgz:
+- [$ARM_TGZ]($ARM_TGZ)
+
+PPCLE .tgz:
+- [$PPCLE_TGZ]($PPCLE_TGZ)
+
+PPCLE .rpm:
+- [$PPCLE_RPM]($PPCLE_RPM)
+
+Mac Intel .dmg:
+- [$MAC_INTEL_DMG]($MAC_INTEL_DMG)
+
+Mac Intel .tgz:
+- [$MAC_INTEL_TGZ]($MAC_INTEL_TGZ)
+
+Mac Universal .dmg:
+- [$MAC_UNIV_DMG]($MAC_UNIV_DMG)
+
+Mac Universal .tgz:
+- [$MAC_UNIV_TGZ]($MAC_UNIV_TGZ)
+
+FreeBSD12 .tgz:
+- [$FREEBSD12_TGZ]($FREEBSD12_TGZ)
+
+FreeBSD12 .txz:
+- [$FREEBSD12_TXZ]($FREEBSD12_TXZ)
+
+FreeBSD13 .tgz:
+- [$FREEBSD13_TGZ]($FREEBSD13_TGZ)
+
+FreeBSD13 .txz:
+- [$FREEBSD13_TXZ]($FREEBSD13_TXZ)
+
+Solaris Sparc .p5p:
+- [$SOLARIS_SPARC_P5P]($SOLARIS_SPARC_P5P)
+
+Solaris Sparc .z:
+- [$SOLARIS_SPARC_Z]($SOLARIS_SPARC_Z)
+
+Solaris Intel .p5p:
+- [$SOLARIS_INTEL_P5P]($SOLARIS_INTEL_P5P)
+
+Solaris Intel .tar.z:
+- [$SOLARIS_INTEL_TARZ]($SOLARIS_INTEL_TARZ)
+
+AIX PPC .tgz:
+- [$AIX_PPC_TGZ]($AIX_PPC_TGZ)
 '''
 
 bash_template = '''\
