@@ -23,15 +23,20 @@ function print_banner {
     echo
 }
 
-function get_user_input {
+function get_input_string {
+    read -r -p "$1" input
+    echo "$input"
+}
+
+function get_input_list {
     local input_list=()
 
     while [ "$continue" != "false" ]; do
-        read -r -p "Enter input: (one entry per line; hit enter to continue): " userInput
-        if [[ "$userInput" == "" ]]; then
+        input=$(get_input_string "Enter input: (one entry per line; hit enter to continue): ")
+        if [ "$input" == "" ]; then
             continue="false"
         else
-            input_list+=("$userInput")
+            input_list+=("$input")
         fi
     done
 
@@ -42,30 +47,23 @@ function get_user_input {
 
 function detect_system_info {
     print_banner "Detecting system info"
-
     echo "[*] Detecting package manager"
+
     if command -v apt &>/dev/null; then
         echo "[*] apt detected (Debian-based OS)"
         pm="apt"
-        return
-    fi
-
-    if command -v dnf &>/dev/null; then
+    elif command -v dnf &>/dev/null; then
         echo "[*] dnf detected (Fedora-based OS)"
         pm="dnf"
-        return
-    fi
-
-    if command -v yum &>/dev/null; then
-        echo "[*] yum detected (RHEL-based OS)"
-        pm="yum"
-        return
-    fi
-
-    if command -v zypper &>/dev/null; then
+    elif command -v zypper &>/dev/null; then
         echo "[*] zypper detected (OpenSUSE-based OS)"
         pm="zypper"
-        return
+    elif command -v yum &>/dev/null; then
+        echo "[*] yum detected (RHEL-based OS)"
+        pm="yum"
+    else
+        echo "[X] ERROR: Could not detect package manager"
+        exit 1
     fi
 
     echo "[*] Detecting sudo (admin) group"
@@ -82,22 +80,23 @@ function detect_system_info {
 
 function install_prereqs {
     print_banner "Installing prerequisites"
-    sudo $pm install zip unzip wget curl
+    # TODO: install a syslog daemon for Splunk?
+    sudo $pm install -y zip unzip wget curl
 }
 
 function change_passwords {
     print_banner "Changing user passwords"
-    echo "[*] Enter the new password for all users."
+    echo "[*] Enter the new password to be used for all users."
     while true; do
         password=""
         confirm_password=""
 
         # Ask for password
-        read -p "Enter password: " -s password
+        password=$(get_input_string "Enter password: ")
         echo
 
         # Confirm password
-        read -p "Confirm password: " -s confirm_password
+        confirm_password=$(get_input_string "Confirm password: ")
         echo
 
         if [ "$password" != "$confirm_password" ]; then
@@ -117,7 +116,7 @@ function change_passwords {
 
     # Loop through each user and change their password
     for user in $user_list; do
-        if ! echo "$user:$new_password" | chpasswd; then
+        if ! echo "$user:$password" | chpasswd; then
             echo "[X] ERROR: Failed to change password for $user."
         else
             echo "[*] Password for $user has been changed."
@@ -134,7 +133,7 @@ function create_ccdc_users {
             echo "$user not found. Attempting to create..."
             sudo useradd "$user"
             sudo passwd "$user"
-            if [ "$user" = "ccdcuser1" ]; then
+            if [ "$user" == "ccdcuser1" ]; then
                 echo "[*] Adding to $sudo_group group"
                 sudo usermod -aG $sudo_group "$user"
             fi
@@ -144,15 +143,13 @@ function create_ccdc_users {
 
 function disable_users {
     print_banner "Disabling users"
-    # TODO: turn this into sub function
     exclude_users=("${ccdc_users[@]}")
     echo "[*] Currently excluded users:" "${exclude_users[@]}"
     echo "[*] Would you like to exclude any additional users?"
-    read -r -p "(y/n): " option
-    option=$(echo "$option" | tr -d ' ') # truncates any spaces accidentally put in
+    option=$(get_input_string "(y/n): ")
     if [ "$option" == "y" ]; then
         compgen -u
-        input=$(get_user_input)
+        input=$(get_input_list)
         for item in $input; do
             exclude_users+=("$item")
         done
@@ -183,14 +180,14 @@ function disable_users {
 function remove_sudoers {
     print_banner "Removing sudoers"
     echo "[*] Removing users from the $sudo_group group"
+    
     exclude_users=("${ccdc_users[@]}")
     echo "[*] Currently excluded users:" "${exclude_users[@]}"
     echo "[*] Would you like to exclude any additional users?"
-    read -r -p "(y/n): " option
-    option=$(echo "$option" | tr -d ' ') # truncates any spaces accidentally put in
+    option=$(get_input_string "(y/n): ")
     if [ "$option" == "y" ]; then
         compgen -u
-        input=$(get_user_input)
+        input=$(get_input_list)
         for item in $input; do
             exclude_users+=("$item")
         done
@@ -208,37 +205,104 @@ function remove_sudoers {
     done
 }
 
-function remove_existing_firewall {
-    echo "[*] Removing any existing firewalls and/or rules"
+function disable_other_firewalls {
+    print_banner "Disabling existing firewalls"
     if sudo command -v firewalld &>/dev/null; then
-        echo "[*] firewalld detected; disabling"
+        echo "[*] disabling firewalld"
         sudo systemctl stop firewalld
         sudo systemctl disable firewalld
-    elif sudo command -v ufw &>/dev/null; then
-        echo "[*] ufw detected; disabling"
-        sudo ufw disable
     fi
+    # elif sudo command -v ufw &>/dev/null; then
+    #     echo "[*] disabling ufw"
+    #     sudo ufw disable
+    # fi
 
     # Some systems may also have iptables as backend
     if sudo command -v iptables &>/dev/null; then
-        echo "[*] iptables detected; clearing table"
-        sudo iptables -F        
+        echo "[*] clearing iptables rules"
+        sudo iptables -F
+    fi
+}
+
+function setup_ufw {
+    sudo $pm install -y ufw
+    if command -v ufw &> /dev/null; then
+        echo "[*] Package ufw installed successfully"
+        echo "[*] Which ports should be open for incoming traffic (INPUT)?"
+        echo "[*] Warning: Do NOT forget to add 22/SSH if needed- please don't accidentally lock yourself out of the system!"
+        ports=$(get_input_list)
+        for port in $ports; do
+            sudo ufw allow "$port"
+            echo "[*] Rule added for port $port"
+        done
+        sudo ufw logging on
+        sudo ufw limit ssh
+        sudo ufw enable
+    else
+        echo "[X] ERROR: Package ufw failed to install. Firewall will need to be configured manually"
     fi
 }
 
 function setup_iptables {
+    # TODO: this needs work/testing on different distros
+    print_banner "iptables setup"
     echo "[*] Installing iptables packages"
-    sudo $pm install -y iptables iptables-persistent
+    if [ "$pm" == 'apt' ]; then
+        # Debian and Ubuntu
+        sudo $pm install -y iptables iptables-persistent #ipset
+        SAVE='/etc/iptables/rules.v4'
+    else
+        # Fedora
+        sudo $pm install -y iptables-services
+        sudo systemctl enable iptables
+        sudo systemctl start iptables
+        SAVE='/etc/sysconfig/iptables'
+    fi
 
-    echo "[*] Setting up iptables rules"
-    # TODO: create custom rules
+    # echo "[*] Creating private ip range ipset"
+    # sudo ipset create PRIVATE-IP hash:net
+    # sudo ipset add PRIVATE-IP 10.0.0.0/8
+    # sudo ipset add PRIVATE-IP 172.16.0.0/12
+    # sudo ipset add PRIVATE-IP 192.168.0.0/16
+    # sudo ipset save | sudo tee /etc/ipset.conf
+    # sudo systemctl enable ipset
+
+    echo "[*] Creating INPUT rules"
+    sudo iptables -P INPUT DROP
+    sudo iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+    sudo iptables -A INPUT -i lo -j ACCEPT
+    sudo iptables -A INPUT -s 0.0.0.0/0 -j ACCEPT
+
+    echo "[*] Which ports should be open for incoming traffic (INPUT)?"
+    echo "[*] Warning: Do NOT forget to add 22/SSH if needed- please don't accidentally lock yourself out of the system!"
+    ports=$(get_input_list)
+    for port in $ports; do
+        sudo iptables -A INPUT --dport "$port" -j ACCEPT
+    done
+    # TODO: is there a better alternative to this rule?
+    sudo iptables -A INPUT -j LOG --log-prefix "[iptables] CHAIN=INPUT ACTION=DROP "
+
+    echo "[*] Creating OUTPUT rules"
+    # TODO: harden this as much as possible, like by limiting destination hosts
+    # sudo iptables -P OUTPUT DROP
+    # sudo iptables -A OUTPUT -o lo -j ACCEPT
+    # sudo iptables -A OUTPUT -p tcp -m multiport --dport 80,443 -m set ! --match-set PRIVATE-IP dst -j ACCEPT
+    # Web traffic
+    sudo iptables -A OUTPUT -p tcp -m multiport --dport 80,443 -j WEB
+    sudo iptables -N WEB
+    sudo iptables -A WEB -d 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -j LOG --log-prefix "[iptables] WEB/private ip "
+    sudo iptables -A WEB -j ACCEPT
+    # DNS traffic
+    sudo iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+
+    echo "[*] Saving rules"
+    sudo iptables-save | sudo tee $SAVE
 }
 
 function backups {
     # Get backup storage name
     while true; do
-        backup_name=""
-        read -r -p "Enter name for encrypted backups file (ex. cosmo.zip ): " backup_name
+        backup_name=$(get_input_string "Enter name for encrypted backups file (ex. cosmo.zip ): ")
         if [ "$backup_name" != "" ]; then
             break
         fi
@@ -246,12 +310,11 @@ function backups {
     done
     # Get backup storage location
     while true; do
-        backup_dir=""
-        read -r -p "Enter directory to place encrypted backups file (ex. /var/log/ ): " backup_dir
+        backup_dir=$(get_input_string "Enter directory to place encrypted backups file (ex. /var/log/ ): ")
         if [ -e "$backup_dir" ]; then
             break
         fi
-        echo "[X] ERROR: $backup_dir is invalid or does not exist: "
+        echo "[X] ERROR: $backup_dir is invalid or does not exist"
     done
     # Get backup encryption password
     echo "[*] Enter the backup encryption password."
@@ -260,11 +323,11 @@ function backups {
         confirm_password=""
 
         # Ask for password
-        read -p "Enter password: " -s password
+        password=$(get_input_string "Enter password: ")
         echo
 
         # Confirm password
-        read -p "Confirm password: " -s confirm_password
+        confirm_password=$(get_input_string "Confirm password: ")
         echo
 
         if [ "$password" != "$confirm_password" ]; then
@@ -296,12 +359,12 @@ function backups {
         echo "[*] Backups successfully stored and encrypted."
     else
         echo "[X] ERROR: Could not successfully create backups."
-    fi
+    fi          
 }
 
 function setup_splunk {
-    print_banner "Installing splunk"
-    read -r -p "What is the Splunk forward server ip? " indexer_ip
+    print_banner "Installing Splunk"
+    indexer_ip=$(get_input_string "What is the Splunk forward server ip? ")
 
     wget $GITHUB_URL/splunk/splunk.sh --no-check-certificate
     sudo chmod +x splunk.sh
@@ -332,8 +395,9 @@ function main {
     remove_sudoers
     create_ccdc_users
 
-    remove_existing_firewall
-    setup_iptables
+    disable_other_firewalls
+    setup_ufw
+    # setup_iptables
 
     backups
     setup_splunk
@@ -345,7 +409,7 @@ DEBUG_LOG_PATH=$(dirname "$DEBUG_LOG")
 if [ ! -d "$DEBUG_LOG_PATH" ]; then
     sudo mkdir -p "$DEBUG_LOG_PATH"
     sudo chown root:root "$DEBUG_LOG_PATH"
-    sudo chmod 755 "$DEBUG_LOG_PATH"
+    sudo chmod 750 "$DEBUG_LOG_PATH"
 fi
 main "$@" 2>&1 | sudo tee -a $DEBUG_LOG
 #####################################################
