@@ -2,7 +2,7 @@
 # Usage: ./harden.sh [option]
 
 ###################### GLOBALS ######################
-DEBUG_LOG='/var/log/ccdc/setup/firewall.log'
+DEBUG_LOG='/var/log/ccdc/harden.log'
 GITHUB_URL='https://raw.githubusercontent.com/BYU-CCDC/public-ccdc-resources/main'
 pm=""
 sudo_group=""
@@ -25,6 +25,11 @@ function print_banner {
 
 function get_input_string {
     read -r -p "$1" input
+    echo "$input"
+}
+
+function get_silent_input_string {
+    read -r -s -p "$1" input
     echo "$input"
 }
 
@@ -92,11 +97,11 @@ function change_passwords {
         confirm_password=""
 
         # Ask for password
-        password=$(get_input_string "Enter password: ")
+        password=$(get_silent_input_string "Enter password: ")
         echo
 
         # Confirm password
-        confirm_password=$(get_input_string "Confirm password: ")
+        confirm_password=$(get_silent_input_string "Confirm password: ")
         echo
 
         if [ "$password" != "$confirm_password" ]; then
@@ -116,7 +121,7 @@ function change_passwords {
 
     # Loop through each user and change their password
     for user in $user_list; do
-        if ! echo "$user:$password" | chpasswd; then
+        if ! echo "$user:$password" | sudo chpasswd; then
             echo "[X] ERROR: Failed to change password for $user."
         else
             echo "[*] Password for $user has been changed."
@@ -146,7 +151,7 @@ function disable_users {
     exclude_users=("${ccdc_users[@]}")
     echo "[*] Currently excluded users:" "${exclude_users[@]}"
     echo "[*] Would you like to exclude any additional users?"
-    option=$(get_input_string "(y/n): ")
+    option=$(get_input_string "(y/N): ")
     if [ "$option" == "y" ]; then
         compgen -u
         input=$(get_input_list)
@@ -173,8 +178,8 @@ function disable_users {
 
     for user in "${disable_users[@]}"; do
         sudo usermod -s "$nologin_shell" "$user"
+        echo "[*] Set shell for $user to $nologin_shell"
     done
-    echo "[*] Set nologin shell to $nologin_shell"
 }
 
 function remove_sudoers {
@@ -184,7 +189,7 @@ function remove_sudoers {
     exclude_users=("${ccdc_users[@]}")
     echo "[*] Currently excluded users:" "${exclude_users[@]}"
     echo "[*] Would you like to exclude any additional users?"
-    option=$(get_input_string "(y/n): ")
+    option=$(get_input_string "(y/N): ")
     if [ "$option" == "y" ]; then
         compgen -u
         input=$(get_input_list)
@@ -202,6 +207,7 @@ function remove_sudoers {
 
     for user in "${unprivileged_users[@]}"; do
         sudo gpasswd -d "$user" "$sudo_group"
+        echo "[*] Removed $user from $sudo_group"
     done
 }
 
@@ -225,6 +231,8 @@ function disable_other_firewalls {
 }
 
 function setup_ufw {
+    print_banner "Configuring ufw"
+
     sudo $pm install -y ufw
     if command -v ufw &> /dev/null; then
         echo "[*] Package ufw installed successfully"
@@ -236,7 +244,6 @@ function setup_ufw {
             echo "[*] Rule added for port $port"
         done
         sudo ufw logging on
-        sudo ufw limit ssh
         sudo ufw enable
     else
         echo "[X] ERROR: Package ufw failed to install. Firewall will need to be configured manually"
@@ -245,8 +252,9 @@ function setup_ufw {
 
 function setup_iptables {
     # TODO: this needs work/testing on different distros
-    print_banner "iptables setup"
+    print_banner "Configuring iptables"
     echo "[*] Installing iptables packages"
+
     if [ "$pm" == 'apt' ]; then
         # Debian and Ubuntu
         sudo $pm install -y iptables iptables-persistent #ipset
@@ -300,6 +308,22 @@ function setup_iptables {
 }
 
 function backups {
+    print_banner "Backups"
+    echo "[*] Would you like to backup any files?"
+    option=$(get_input_string "(y/N): ")
+
+    if [ "$option" != "y" ]; then
+        return
+    fi
+    
+    # Enter directories to backup
+    dirs_to_backup=()
+    echo "Enter directories/files to backup:"
+    input=$(get_input_list)
+    for item in $input; do
+        dirs_to_backup+=("$item")
+    done
+
     # Get backup storage name
     while true; do
         backup_name=$(get_input_string "Enter name for encrypted backups file (ex. cosmo.zip ): ")
@@ -323,11 +347,11 @@ function backups {
         confirm_password=""
 
         # Ask for password
-        password=$(get_input_string "Enter password: ")
+        password=$(get_silent_input_string "Enter password: ")
         echo
 
         # Confirm password
-        confirm_password=$(get_input_string "Confirm password: ")
+        confirm_password=$(get_silent_input_string "Confirm password: ")
         echo
 
         if [ "$password" != "$confirm_password" ]; then
@@ -337,17 +361,15 @@ function backups {
         fi
     done
 
-    sudo mkdir "$backup_dir/backups"
-    dirs_to_backup=()
-
     # Zip all directories and store in backups directory
+    sudo mkdir "$backup_dir/backups"
     for dir in "${dirs_to_backup[@]}"; do
         filename=$(basename "$dir")
         sudo zip -r "$backup_dir/backups/$filename.zip" "$dir" &> /dev/null
     done
 
     # Compress backups directory
-    tar -czvf $backup_dir/backups.tar.gz -C "$backup_dir" backups &>/dev/null
+    tar -czvf "$backup_dir/backups.tar.gz" -C "$backup_dir" backups &>/dev/null
 
     # Encrypt backup
     openssl enc -aes-256-cbc -salt -in "$backup_dir/backups.tar.gz" -out "$backup_dir/$backup_name" -k "$password"
@@ -359,7 +381,7 @@ function backups {
         echo "[*] Backups successfully stored and encrypted."
     else
         echo "[X] ERROR: Could not successfully create backups."
-    fi          
+    fi
 }
 
 function setup_splunk {
