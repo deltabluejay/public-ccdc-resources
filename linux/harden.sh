@@ -142,6 +142,7 @@ function create_ccdc_users {
                 echo "[*] Adding to $sudo_group group"
                 sudo usermod -aG $sudo_group "$user"
             fi
+            echo -e "\n"
         fi
     done
 }
@@ -149,6 +150,7 @@ function create_ccdc_users {
 function disable_users {
     print_banner "Disabling users"
     exclude_users=("${ccdc_users[@]}")
+    exclude_users+=("root")
     echo "[*] Currently excluded users:" "${exclude_users[@]}"
     echo "[*] Would you like to exclude any additional users?"
     option=$(get_input_string "(y/N): ")
@@ -235,9 +237,9 @@ function setup_ufw {
 
     sudo $pm install -y ufw
     if command -v ufw &> /dev/null; then
-        echo "[*] Package ufw installed successfully"
-        echo "[*] Which ports should be open for incoming traffic (INPUT)?"
-        echo "[*] Warning: Do NOT forget to add 22/SSH if needed- please don't accidentally lock yourself out of the system!"
+        echo -e "[*] Package ufw installed successfully\n"
+        echo "[*] Which ports should be opened for incoming traffic?"
+        echo "      WARNING: Do NOT forget to add 22/SSH if needed- please don't accidentally lock yourself out of the system!"
         ports=$(get_input_list)
         for port in $ports; do
             sudo ufw allow "$port"
