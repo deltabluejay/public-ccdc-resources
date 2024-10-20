@@ -61,6 +61,24 @@ function get_input_list {
     echo "${input_list[@]}"
 }
 
+function exclude_users {
+    users="$@"
+    input=$(get_input_list)
+    for item in $input; do
+        users+=("$item")
+    done
+    echo "${users[@]}"
+}
+
+function get_users {
+    awk_string=$1
+    exclude_users=$(sed -e 's/ /\\|/g' <<< $2)
+    users=$(awk -F ':' "$awk_string" /etc/passwd)
+    filtered=$(echo "$users" | grep -v -e $exclude_users)
+    readarray -t results <<< $filtered
+    echo "${results[@]}"
+}
+
 function detect_system_info {
     print_banner "Detecting system info"
     echo "[*] Detecting package manager"
@@ -131,17 +149,14 @@ function create_ccdc_users {
 function change_passwords {
     print_banner "Changing user passwords"
 
-    exclude_users=("${ccdc_users[@]}")
-    echo "[*] Currently excluded users: ${exclude_users[*]}"
+    exclusions=("${ccdc_users[@]}")
+    echo "[*] Currently excluded users: ${exclusions[*]}"
     echo "[*] Would you like to exclude any additional users?"
     option=$(get_input_string "(y/N): ")
     if [ "$option" == "y" ]; then
-        compgen -u
-        input=$(get_input_list)
-        for item in $input; do
-            exclude_users+=("$item")
-        done
+        exclusions=$(exclude_users "${exclusions[@]}")
     fi
+    targets=$(get_users '$3 >= 1000 && $1 != "nobody" {print $1}' "${exclusions[*]}")
 
     echo "[*] Enter the new password to be used for all users."
     while true; do
@@ -163,19 +178,8 @@ function change_passwords {
         fi
     done
 
-
-    # Get a list of all user accounts (excluding system users) and filter out excluded users
-    readarray -t change_users < <(awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd | grep -v -w -F -e "${exclude_users[@]}")
-
-    # Check if user list is empty
-    if [ "${#change_users[@]}" -eq 0 ]; then
-        echo "[X] ERROR: No valid users found."
-        return
-    fi
-
-    # Loop through each user and change their password
-    debug_print "Changing passwords for users in list ${change_users[*]}"
-    for user in "${change_users[@]}"; do
+    echo "[*] Changing passwords..."
+    for user in $targets; do
         if ! echo "$user:$password" | sudo chpasswd; then
             echo "[X] ERROR: Failed to change password for $user"
         else
@@ -196,32 +200,18 @@ function disable_users {
         nologin_shell="/bin/false"
     fi
 
-    exclude_users=("${ccdc_users[@]}")
-    exclude_users+=("root")
-    echo "[*] Currently excluded users: ${exclude_users[*]}"
+    exclusions=("${ccdc_users[@]}")
+    exclusions+=("root")
+    echo "[*] Currently excluded users: ${exclusions[*]}"
     echo "[*] Would you like to exclude any additional users?"
     option=$(get_input_string "(y/N): ")
     if [ "$option" == "y" ]; then
-        compgen -u
-        input=$(get_input_list)
-        for item in $input; do
-            exclude_users+=("$item")
-        done
+        exclusions=$(exclude_users "${exclusions[@]}")
     fi
+    targets=$(get_users '/\/bash$|\/sh$/{print $1}' "${exclusions[*]}")
 
     echo "[*] Disabling users..."
-    # TODO: options for sh or other shells
-    # Get a list of all user accounts with shells and filter out excluded users
-    readarray -t change_users < <(awk -F ':' '/bash/{print $1}' /etc/passwd | grep -v -w -F -e "${exclude_users[@]}")
-
-    # Check if user list is empty
-    if [ "${#change_users[@]}" -eq 0 ]; then
-        echo "[X] ERROR: No valid users found."
-        return
-    fi
-
-    debug_print "Disabling users in list ${change_users[*]}"
-    for user in "${change_users[@]}"; do
+    for user in $targets; do
         sudo usermod -s "$nologin_shell" "$user"
         echo "[*] Set shell for $user to $nologin_shell"
     done
@@ -231,29 +221,17 @@ function remove_sudoers {
     print_banner "Removing sudoers"
     echo "[*] Removing users from the $sudo_group group"
     
-    exclude_users=("${ccdc_users[@]}")
-    echo "[*] Currently excluded users:" "${exclude_users[@]}"
+    exclusions=("ccdcuser1")
+    echo "[*] Currently excluded users: ${exclusions[*]}"
     echo "[*] Would you like to exclude any additional users?"
     option=$(get_input_string "(y/N): ")
     if [ "$option" == "y" ]; then
-        compgen -u
-        input=$(get_input_list)
-        for item in $input; do
-            exclude_users+=("$item")
-        done
+        exclusions=$(exclude_users "${exclusions[@]}")
     fi
+    targets=$(get_users '{print $1}' "${exclusions[*]}")
 
     echo "[*] Removing sudo users..."
-    readarray -t change_users < <(awk -F ':' '{print $1}' /etc/passwd | grep -v -w -F -e "${exclude_users[@]}")
-
-    # Check if user list is empty
-    if [ "${#change_users[@]}" -eq 0 ]; then
-        echo "[X] ERROR: No valid users found."
-        return
-    fi
-
-    debug_print "Removing users in list ${change_users[*]}"
-    for user in "${change_users[@]}"; do
+    for user in $targets; do
         sudo gpasswd -d "$user" "$sudo_group"
         echo "[*] Removed $user from $sudo_group"
     done
