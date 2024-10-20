@@ -3,7 +3,7 @@
 # Use `indexer` as the forward-server-ip to install the indexer
 
 ###################### GLOBALS ######################
-DEBUG_LOG='/var/log/ccdc/setup/splunk.log'
+DEBUG_LOG='/var/log/ccdc/splunk.log'
 GITHUB_URL='https://raw.githubusercontent.com/BYU-CCDC/public-ccdc-resources/main'
 INDEXES=( 'system' 'web' 'network' 'windows' 'misc' 'snoopy' )
 
@@ -11,18 +11,20 @@ INDEXES=( 'system' 'web' 'network' 'windows' 'misc' 'snoopy' )
 IP="$2"
 if [ "$IP" == "indexer" ] || [ "$IP" == "i" ]; then
     IP="indexer"
-    deb="https://download.splunk.com/products/splunk/releases/9.3.1/linux/splunk-9.3.1-0b8d769cb912-linux-2.6-amd64.deb"
-    rpm="https://download.splunk.com/products/splunk/releases/9.3.1/linux/splunk-9.3.1-0b8d769cb912.x86_64.rpm"
-    tgz="https://download.splunk.com/products/splunk/releases/9.3.1/linux/splunk-9.3.1-0b8d769cb912-Linux-x86_64.tgz"
     SPLUNKDIR="/opt/splunk"
+
+    deb="https://download.splunk.com/products/splunk/releases/9.2.3/linux/splunk-9.2.3-282efff6aa8b-linux-2.6-amd64.deb"
+    rpm="https://download.splunk.com/products/splunk/releases/9.2.3/linux/splunk-9.2.3-282efff6aa8b.x86_64.rpm"
+    tgz="https://download.splunk.com/products/splunk/releases/9.2.3/linux/splunk-9.2.3-282efff6aa8b-Linux-x86_64.tgz"
 else
-    deb="https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912-linux-2.6-amd64.deb"
-    rpm="https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912.x86_64.rpm"
-    tgz="https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912-Linux-x86_64.tgz"
-    arm_deb="https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912-Linux-armv8.deb"
-    arm_rpm="https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912.aarch64.rpm"
-    arm_tgz="https://download.splunk.com/products/universalforwarder/releases/9.3.1/linux/splunkforwarder-9.3.1-0b8d769cb912-Linux-armv8.tgz"
     SPLUNKDIR="/opt/splunkforwarder"
+    
+    deb="https://download.splunk.com/products/universalforwarder/releases/9.2.3/linux/splunkforwarder-9.2.3-282efff6aa8b-linux-2.6-amd64.deb"
+    rpm="https://download.splunk.com/products/universalforwarder/releases/9.2.3/linux/splunkforwarder-9.2.3-282efff6aa8b.x86_64.rpm"
+    tgz="https://download.splunk.com/products/universalforwarder/releases/9.2.3/linux/splunkforwarder-9.2.3-282efff6aa8b-Linux-x86_64.tgz"
+    arm_deb="https://download.splunk.com/products/universalforwarder/releases/9.2.3/linux/splunkforwarder-9.2.3-282efff6aa8b-Linux-armv8.deb"
+    arm_rpm="https://download.splunk.com/products/universalforwarder/releases/9.2.3/linux/splunkforwarder-9.2.3-282efff6aa8b.aarch64.rpm"
+    arm_tgz="https://download.splunk.com/products/universalforwarder/releases/9.2.3/linux/splunkforwarder-9.2.3-282efff6aa8b-Linux-armv8.tgz"
 fi
 #####################################################
 
@@ -119,7 +121,7 @@ function install_splunk {
                 sudo wget -O splunk.rpm "$rpm"
                 sudo yum install ./splunk.rpm -y
             ;;
-            tgz|linux )
+            tgz|tar|linux )
                 print_banner "Installing generic .tgz package"
                 echo
                 sudo wget -O splunk.tgz "$tgz"
@@ -177,7 +179,7 @@ function setup_indexer {
     done
 
     echo "[*] Installing Searches"
-    wget $GITHUB_URL/splunk_setup/savedsearches.conf
+    wget $GITHUB_URL/splunk/savedsearches.conf
     sudo mkdir -p $SPLUNKDIR/etc/users/splunk/search/local/
     if sudo cp $SPLUNKDIR/etc/users/splunk/search/local/savedsearches.conf $SPLUNKDIR/etc/users/splunk/search/local/savedsearches.bk &>/dev/null; then
         echo "[*] Successfully backed up old savedsearches.conf as savedsearches.bk"
@@ -218,8 +220,12 @@ function setup_splunk {
         sudo $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1 -user splunk
     fi
 
+    echo "[*] Setting splunk user"
+    # TODO: fix password by pulling from /etc/passwd?
+    sudo -H -u splunk $SPLUNKDIR/bin/splunk add user splunk -role Admin -password temporarypassword
+
     echo "[*] Starting splunk"
-    sudo -H -u splunk $SPLUNKDIR/bin/splunk start --accept-license --no-prompt
+    sudo -H -u splunk $SPLUNKDIR/bin/splunk start --accept-license
     if [ "$IP" == "indexer" ]; then
         setup_indexer
         # TODO: add firewall rules
@@ -228,9 +234,6 @@ function setup_splunk {
     else
         setup_forward_server "$IP"
     fi
-
-    # TODO: fix password by pulling from /etc/passwd?
-    sudo -H -u splunk $SPLUNKDIR/bin/splunk add user splunk -role Admin -password temporarypassword
 }
 
 # Checks for existence of a file or directory and add it as a monitor if it exists
@@ -475,7 +478,7 @@ function add_mysql_logs {
 # Installs custom CCDC splunk app
 function install_ccdc_app {
     print_banner "Installing CCDC Splunk app"
-    sudo wget $GITHUB_URL/splunk_setup/ccdc-app.zip
+    sudo wget $GITHUB_URL/splunk/ccdc-app.zip
     sudo unzip ccdc-app.zip
     sudo mv ccdc-app $SPLUNKDIR/etc/apps/ccdc-app
     sudo chown -R splunk:splunk $SPLUNKDIR/etc/apps/ccdc-app
@@ -562,7 +565,7 @@ function setup_forward_server {
 function add_dashboard {
     print_banner "Adding Homedash dashboard"
     sudo mkdir -p "$SPLUNKDIR/etc/users/splunk/search/local/data/ui/views/"
-    sudo wget -O "$SPLUNKDIR/etc/users/splunk/search/local/data/ui/views/homedash.xml" "$GITHUB_URL/splunk_setup/homedash.xml"
+    sudo wget -O "$SPLUNKDIR/etc/users/splunk/search/local/data/ui/views/homedash.xml" "$GITHUB_URL/splunk/homedash.xml"
     echo "[*] Moved dashboard file to $SPLUNKDIR/etc/users/splunk/search/local/data/ui/views/homedash.xml"
 }
 
@@ -570,8 +573,8 @@ function add_dashboard {
 function add_custom_config {
     print_banner "Adding custom configuration files"
     sudo mkdir -p "$SPLUNKDIR/etc/apps/splunk_ingest_actions/local/"
-    sudo wget -O "$SPLUNKDIR/etc/apps/splunk_ingest_actions/local/props.conf" "$GITHUB_URL/splunk_setup/ingest_actions/props.conf"
-    sudo wget -O "$SPLUNKDIR/etc/apps/splunk_ingest_actions/local/transforms.conf" "$GITHUB_URL/splunk_setup/ingest_actions/transforms.conf"
+    sudo wget -O "$SPLUNKDIR/etc/apps/splunk_ingest_actions/local/props.conf" "$GITHUB_URL/splunk/ingest_actions/props.conf"
+    sudo wget -O "$SPLUNKDIR/etc/apps/splunk_ingest_actions/local/transforms.conf" "$GITHUB_URL/splunk/ingest_actions/transforms.conf"
     echo "[*] Moved config files to $SPLUNKDIR/etc/apps/splunk_ingest_actions/local/ (props.conf and transforms.conf)"
 }
 
@@ -583,7 +586,7 @@ function install_auditd {
     
     if [ "$option" == "y" ]; then
         print_banner "Installing auditd (file monitor)"
-        sudo wget $GITHUB_URL/splunk_setup/auditd.sh
+        sudo wget $GITHUB_URL/splunk/auditd.sh
         sudo chmod +x auditd.sh
         ./auditd.sh
         add_monitor "/var/log/audit/audit.log" "system"
@@ -691,5 +694,5 @@ if [ ! -d "$DEBUG_LOG_PATH" ]; then
     sudo chown root:root "$DEBUG_LOG_PATH"
     sudo chmod 755 "$DEBUG_LOG_PATH"
 fi
-main "$@" 2>&1 | sudo tee -a $DEBUG_LOG
+main "$@" 2>&1 | sudo tee $DEBUG_LOG
 #####################################################
