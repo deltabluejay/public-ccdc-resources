@@ -214,13 +214,13 @@ function setup_splunk {
         exit 1
     fi
 
-    echo "[*] Setting splunk user"
-    # TODO: fix password by pulling from /etc/passwd?
-    sudo -H -u splunk $SPLUNKDIR/bin/splunk add user splunk -role Admin -password temporarypassword
-
     echo "[*] Starting splunk"
     sudo -H -u splunk $SPLUNKDIR/bin/splunk start --accept-license
-    
+
+    # echo "[*] Setting splunk user"
+    # TODO: fix password by pulling from /etc/passwd?
+    # sudo -H -u splunk $SPLUNKDIR/bin/splunk add user splunk -role Admin -password temporarypassword
+
     if command -v systemctl &> /dev/null; then
         echo "[*] Enabling systemd service"
         sudo $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1 -user splunk
@@ -507,36 +507,41 @@ function add_additional_logs {
     print_banner "Adding additional logs"
 
     echo "[*] Indexes:" "${INDEXES[@]}"
-    for index in "${INDEXES[@]}"; do
-        echo "[*] Would you like to add additional log sources for index '$index'?"
-        read -r -p "(y/N): " option
-        option=$(echo "$option" | tr -d ' ') # truncates any spaces accidentally put in
+    echo "[*] Would you like to add any additional monitors?"
+    read -r -p "(y/N): " option
+    option=$(echo "$option" | tr -d ' ') # truncates any spaces accidentally put in
+    if [ "$option" == "y" ]; then
+        for index in "${INDEXES[@]}"; do
+            echo "[*] Would you like to add additional sources for index '$index'?"
+            read -r -p "(y/N): " option
+            option=$(echo "$option" | tr -d ' ')
 
-        sources=()
-        continue="true"
-        if [ "$option" == "y" ]; then
-            while [ "$continue" != "false" ]; do
-                read -r -p "[*] Enter additional logs sources: (one entry per line; hit enter to continue): " userInput
-                if [[ "$userInput" == "" ]]; then
-                    continue="false"
-                else
-                    sources+=("$userInput")
-                fi
-            done
-            for source in "${sources[@]}"; do
-                add_monitor "$source" "$index"
-            done
-        fi
-    done
+            sources=()
+            continue="true"
+            if [ "$option" == "y" ]; then
+                while [ "$continue" != "false" ]; do
+                    read -r -p "[*] Enter additional logs sources: (one entry per line; hit enter to continue): " userInput
+                    if [[ "$userInput" == "" ]]; then
+                        continue="false"
+                    else
+                        sources+=("$userInput")
+                    fi
+                done
+                for source in "${sources[@]}"; do
+                    add_monitor "$source" "$index"
+                done
+            fi
+        done
+    fi
 }
 
 # Add all monitors and forward server
 function setup_monitors {
     print_banner "Adding Monitors"
-    echo "[*] Would you like to setup monitors?"
-    read -r -p "(y/N): " option
+    echo "[*] Would you like to automatically add monitors?"
+    read -r -p "(Y/n): " option
 
-    if [ "$option" == "y" ]; then
+    if [ "$option" != "n" ]; then
         # Add monitors
         add_system_logs
         # add_firewall_logs
@@ -581,13 +586,13 @@ function add_custom_config {
 # Install auditd for file monitoring
 function install_auditd {
     echo "[*] Would you like to install/setup auditd?"
-    read -r -p "(y/N): " option
+    read -r -p "(Y/n): " option
     option=$(echo "$option" | tr -d ' ') # truncates any spaces accidentally put in
     
-    if [ "$option" == "y" ]; then
+    if [ "$option" != "n" ]; then
         print_banner "Installing auditd (file monitor)"
-        sudo wget $GITHUB_URL/splunk/auditd.sh
-        sudo chmod +x auditd.sh
+        wget $GITHUB_URL/splunk/auditd.sh
+        chmod +x auditd.sh
         ./auditd.sh
         add_monitor "/var/log/audit/audit.log" "system"
     fi
@@ -595,11 +600,12 @@ function install_auditd {
 
 # Install snoopy for bash logging
 function install_snoopy {
+    # TODO: this needs work
     echo "[*] Would you like to install/setup snoopy?"
-    read -r -p "(y/N): " option
+    read -r -p "(Y/n): " option
     option=$(echo "$option" | tr -d ' ') # truncates any spaces accidentally put in
 
-    if [ "$option" == "y" ]; then
+    if [ "$option" != "n" ]; then
         print_banner "Installing Snoopy (command logger)"
         wget -O install-snoopy.sh https://github.com/a2o/snoopy/raw/install/install/install-snoopy.sh
         chmod 755 install-snoopy.sh
@@ -612,6 +618,7 @@ function install_snoopy {
             sudo dnf install -y gcc gzip make procps socat tar wget
         fi
         if ! sudo ./install-snoopy.sh stable; then
+            echo
             echo "[X] ERROR: Install failed. If you would like to try installing an older version, "
             echo "    please run \`./install-snoopy.sh X.Y.Z\` with X.Y.Z being the version number."
             echo ""

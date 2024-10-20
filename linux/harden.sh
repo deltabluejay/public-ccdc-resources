@@ -85,6 +85,8 @@ function detect_system_info {
 
     if command -v apt &>/dev/null; then
         echo "[*] apt detected (Debian-based OS)"
+        echo "[*] Updating package list"
+        sudo apt update
         pm="apt"
     elif command -v dnf &>/dev/null; then
         echo "[*] dnf detected (Fedora-based OS)"
@@ -142,8 +144,8 @@ function create_ccdc_users {
                 echo "[*] Adding to $sudo_group group"
                 sudo usermod -aG $sudo_group "$user"
             fi
-            echo -e "\n"
         fi
+        echo
     done
 }
 
@@ -179,6 +181,8 @@ function change_passwords {
         fi
     done
 
+    echo
+
     echo "[*] Changing passwords..."
     for user in $targets; do
         if ! echo "$user:$password" | sudo chpasswd; then
@@ -211,6 +215,8 @@ function disable_users {
     fi
     targets=$(get_users '/\/bash$|\/sh$/{print $1}' "${exclusions[*]}")
 
+    echo
+
     echo "[*] Disabling users..."
     for user in $targets; do
         sudo usermod -s "$nologin_shell" "$user"
@@ -235,7 +241,6 @@ function remove_sudoers {
     for user in $targets; do
         if groups "$user" | grep -q "$sudo_group"; then
             sudo gpasswd -d "$user" "$sudo_group"
-            echo "[*] Removed $user from $sudo_group"
         fi
     done
 }
@@ -351,7 +356,11 @@ function backups {
     input=$(get_input_list)
     for item in $input; do
         path=$(realpath "$item")
-        dirs_to_backup+=("$path")
+        if sudo [ ! -e "$path" ]; then
+            dirs_to_backup+=("$path")
+        else
+            echo "[X] ERROR: $path is invalid or does not exist"
+        fi
     done
 
     # Get backup storage name
