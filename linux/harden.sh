@@ -103,6 +103,31 @@ function install_prereqs {
     sudo $pm install -y zip unzip wget curl
 }
 
+function create_ccdc_users {
+    print_banner "Creating ccdc users"
+    for user in "${ccdc_users[@]}"; do
+        if id "$user" &>/dev/null; then
+            echo "[*] $user already exists. Skipping..."
+        else
+            echo "[*] $user not found. Attempting to create..."
+            if [ -f "/bin/bash" ]; then
+                sudo useradd -m -s /bin/bash "$user"
+            elif [ -f "/bin/sh" ]; then
+                sudo useradd -m -s /bin/sh "$user"
+            else
+                echo "[X] ERROR: Could not find valid shell"
+                exit 1
+            fi
+            sudo passwd "$user"
+            if [ "$user" == "ccdcuser1" ]; then
+                echo "[*] Adding to $sudo_group group"
+                sudo usermod -aG $sudo_group "$user"
+            fi
+            echo -e "\n"
+        fi
+    done
+}
+
 function change_passwords {
     print_banner "Changing user passwords"
 
@@ -138,53 +163,23 @@ function change_passwords {
         fi
     done
 
-    local change_users_list
 
-    # Get a list of all user accounts (excluding system users)
-    if ! change_users_list=$(getent passwd | awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}'); then
-        echo "[X] ERROR: Unable to retrieve user list."
-        exit 1
+    # Get a list of all user accounts (excluding system users) and filter out excluded users
+    readarray -t change_users < <(awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd | grep -v -w -F -e "${exclude_users[@]}")
+
+    # Check if user list is empty
+    if [ "${#change_users[@]}" -eq 0 ]; then
+        echo "[X] ERROR: No valid users found."
+        return
     fi
-    # Convert user list to an array
-    readarray -t change_users_list <<< "$change_users_list"
-
-    # Remove all excluded users
-    for exclude in "${exclude_users[@]}"; do
-        change_users_list=("${change_users_list[@]/$exclude/}")
-    done
 
     # Loop through each user and change their password
-    debug_print "Changing passwords for users in list ${change_users_list[*]}"
-    for user in "${change_users_list[@]}"; do
+    debug_print "Changing passwords for users in list ${change_users[*]}"
+    for user in "${change_users[@]}"; do
         if ! echo "$user:$password" | sudo chpasswd; then
-            echo "[X] ERROR: Failed to change password for $user."
+            echo "[X] ERROR: Failed to change password for $user"
         else
             echo "[*] Password for $user has been changed."
-        fi
-    done
-}
-
-function create_ccdc_users {
-    print_banner "Creating ccdc users"
-    for user in "${ccdc_users[@]}"; do
-        if id "$user" &>/dev/null; then
-            echo "[*] $user already exists. Skipping..."
-        else
-            echo "[*] $user not found. Attempting to create..."
-            if [ -f "/bin/bash" ]; then
-                sudo useradd -m -s /bin/bash "$user"
-            elif [ -f "/bin/sh" ]; then
-                sudo useradd -m -s /bin/sh "$user"
-            else
-                echo "[X] ERROR: Could not find valid shell"
-                exit 1
-            fi
-            sudo passwd "$user"
-            if [ "$user" == "ccdcuser1" ]; then
-                echo "[*] Adding to $sudo_group group"
-                sudo usermod -aG $sudo_group "$user"
-            fi
-            echo -e "\n"
         fi
     done
 }
@@ -216,14 +211,17 @@ function disable_users {
 
     echo "[*] Disabling users..."
     # TODO: options for sh or other shells
-    readarray -t disable_users < <(awk -F ':' '/bash/{print $1}' /etc/passwd)
-    # Remove all excluded users
-    for exclude in "${exclude_users[@]}"; do
-        disable_users=("${disable_users[@]/$exclude/}")
-    done
+    # Get a list of all user accounts with shells and filter out excluded users
+    readarray -t change_users < <(awk -F ':' '/bash/{print $1}' /etc/passwd | grep -v -w -F -e "${exclude_users[@]}")
 
-    debug_print "Disabling users in list ${disable_users[*]}"
-    for user in "${disable_users[@]}"; do
+    # Check if user list is empty
+    if [ "${#change_users[@]}" -eq 0 ]; then
+        echo "[X] ERROR: No valid users found."
+        return
+    fi
+
+    debug_print "Disabling users in list ${change_users[*]}"
+    for user in "${change_users[@]}"; do
         sudo usermod -s "$nologin_shell" "$user"
         echo "[*] Set shell for $user to $nologin_shell"
     done
@@ -246,14 +244,16 @@ function remove_sudoers {
     fi
 
     echo "[*] Removing sudo users..."
-    readarray -t unprivileged_users < <(awk -F ':' '/bash/{print $1}' /etc/passwd)
-    # Remove all excluded users
-    for exclude in "${exclude_users[@]}"; do
-        unprivileged_users=("${unprivileged_users[@]/$exclude/}")
-    done
+    readarray -t change_users < <(awk -F ':' '{print $1}' /etc/passwd | grep -v -w -F -e "${exclude_users[@]}")
 
-    debug_print "Removing users in list ${unprivileged_users[*]}"
-    for user in "${unprivileged_users[@]}"; do
+    # Check if user list is empty
+    if [ "${#change_users[@]}" -eq 0 ]; then
+        echo "[X] ERROR: No valid users found."
+        return
+    fi
+
+    debug_print "Removing users in list ${change_users[*]}"
+    for user in "${change_users[@]}"; do
         sudo gpasswd -d "$user" "$sudo_group"
         echo "[*] Removed $user from $sudo_group"
     done
