@@ -2,11 +2,12 @@
 # Usage: ./harden.sh [option]
 
 ###################### GLOBALS ######################
-DEBUG_LOG='/var/log/ccdc/harden.log'
-GITHUB_URL='https://raw.githubusercontent.com/BYU-CCDC/public-ccdc-resources/main'
+LOG='/var/log/ccdc/harden.log'
+GITHUB_URL='https://raw.githubusercontent.com/deltabluejay/public-ccdc-resources/refs/heads/dev'
 pm=""
 sudo_group=""
 ccdc_users=( "ccdcuser1" "ccdcuser2" )
+debug="false"
 #####################################################
 
 ##################### FUNCTIONS #####################
@@ -21,6 +22,16 @@ function print_banner {
     echo "#"
     echo "#######################################"
     echo
+}
+
+function debug_print {
+    if [ "$debug" == "true" ]; then
+        echo -n "DEBUG: "
+        for arg in "$@"; do
+            echo -n "$arg"
+        done
+        echo -e "\n"
+    fi
 }
 
 function get_input_string {
@@ -71,7 +82,7 @@ function detect_system_info {
         exit 1
     fi
 
-    echo "[*] Detecting sudo (admin) group"
+    echo "[*] Detecting sudo group"
 
     groups=$(compgen -g)
     if echo "$groups" | grep -q '^sudo$'; then
@@ -80,6 +91,9 @@ function detect_system_info {
     elif echo "$groups" | grep -q '^wheel$'; then
         echo '[*] wheel group detected'
         sudo_group='wheel'
+    else
+        echo '[X] ERROR: could not detect sudo group'
+	exit 1
     fi
 }
 
@@ -91,6 +105,19 @@ function install_prereqs {
 
 function change_passwords {
     print_banner "Changing user passwords"
+
+    exclude_users=("${ccdc_users[@]}")
+    echo "[*] Currently excluded users:" "${exclude_users[@]}"
+    echo "[*] Would you like to exclude any additional users?"
+    option=$(get_input_string "(y/N): ")
+    if [ "$option" == "y" ]; then
+        compgen -u
+        input=$(get_input_list)
+        for item in $input; do
+            exclude_users+=("$item")
+        done
+    fi
+
     echo "[*] Enter the new password to be used for all users."
     while true; do
         password=""
@@ -119,8 +146,14 @@ function change_passwords {
         exit 1
     fi
 
+    for user in "${exclude_users[@]}"; do
+        # remove all instances of $user in $disable_users
+        user_list=("${user_list[@]//$user}")
+    done
+
     # Loop through each user and change their password
-    for user in $user_list; do
+    debug_print "Changing passwords for users in list [" "${user_list[@]}" "]"
+    for user in "${user_list[@]}"; do
         if ! echo "$user:$password" | sudo chpasswd; then
             echo "[X] ERROR: Failed to change password for $user."
         else
@@ -136,7 +169,14 @@ function create_ccdc_users {
             echo "[*] $user already exists. Skipping..."
         else
             echo "$user not found. Attempting to create..."
-            sudo useradd "$user"
+            if [ -f "/bin/bash" ]; then
+                sudo useradd -m -s /bin/bash "$user"
+            elif [ -f "/bin/sh" ]; then
+                sudo useradd -m -s /bin/sh "$user"
+            else
+                echo "[X] ERROR: Could not find valid shell"
+                exit 1
+            fi
             sudo passwd "$user"
             if [ "$user" == "ccdcuser1" ]; then
                 echo "[*] Adding to $sudo_group group"
@@ -178,6 +218,7 @@ function disable_users {
         nologin_shell="/bin/false"
     fi
 
+    debug_print "Disabling users in list [" "${disable_users[@]}" "]"
     for user in "${disable_users[@]}"; do
         sudo usermod -s "$nologin_shell" "$user"
         echo "[*] Set shell for $user to $nologin_shell"
@@ -207,6 +248,7 @@ function remove_sudoers {
         unprivileged_users=("${unprivileged_users[@]//$user}")
     done
 
+    debug_print "Removing users in list [" "${unprivileged_users[@]}" "]"
     for user in "${unprivileged_users[@]}"; do
         sudo gpasswd -d "$user" "$sudo_group"
         echo "[*] Removed $user from $sudo_group"
@@ -259,11 +301,11 @@ function setup_iptables {
 
     if [ "$pm" == 'apt' ]; then
         # Debian and Ubuntu
-        sudo $pm install -y iptables iptables-persistent #ipset
+        sudo "$pm" install -y iptables iptables-persistent #ipset
         SAVE='/etc/iptables/rules.v4'
     else
         # Fedora
-        sudo $pm install -y iptables-services
+        sudo "$pm" install -y iptables-services
         sudo systemctl enable iptables
         sudo systemctl start iptables
         SAVE='/etc/sysconfig/iptables'
@@ -414,10 +456,10 @@ function main {
     detect_system_info
     install_prereqs
 
+    create_ccdc_users
     change_passwords
     disable_users
     remove_sudoers
-    create_ccdc_users
 
     disable_other_firewalls
     setup_ufw
@@ -427,13 +469,27 @@ function main {
     setup_splunk
 
     echo "[*] End of script"
+    echo "[*] Script log can be viewed at $LOG"
 }
 
-DEBUG_LOG_PATH=$(dirname "$DEBUG_LOG")
-if [ ! -d "$DEBUG_LOG_PATH" ]; then
-    sudo mkdir -p "$DEBUG_LOG_PATH"
-    sudo chown root:root "$DEBUG_LOG_PATH"
-    sudo chmod 750 "$DEBUG_LOG_PATH"
+# Parse arguments
+for arg in "$@"; do
+    case "$arg" in
+        --debug )
+            echo "[*] Debug mode enabled"
+            debug="true"
+        ;;
+    esac
+done
+
+# Set up logging
+LOG_PATH=$(dirname "$LOG")
+if [ ! -d "$LOG_PATH" ]; then
+    sudo mkdir -p "$LOG_PATH"
+    sudo chown root:root "$LOG_PATH"
+    sudo chmod 750 "$LOG_PATH"
 fi
-main "$@" 2>&1 | sudo tee -a $DEBUG_LOG
+
+# Run main function and log output
+main "$@" 2>&1 | sudo tee -a $LOG
 #####################################################
