@@ -107,7 +107,7 @@ function change_passwords {
     print_banner "Changing user passwords"
 
     exclude_users=("${ccdc_users[@]}")
-    echo "[*] Currently excluded users:" "${exclude_users[@]}"
+    echo "[*] Currently excluded users: ${exclude_users[*]}"
     echo "[*] Would you like to exclude any additional users?"
     option=$(get_input_string "(y/N): ")
     if [ "$option" == "y" ]; then
@@ -138,22 +138,24 @@ function change_passwords {
         fi
     done
 
-    local user_list
+    local change_users_list
 
     # Get a list of all user accounts (excluding system users)
-    if ! user_list=$(getent passwd | awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}'); then
+    if ! change_users_list=$(getent passwd | awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}'); then
         echo "[X] ERROR: Unable to retrieve user list."
         exit 1
     fi
+    # Convert user list to an array
+    readarray -t change_users_list <<< "$change_users_list"
 
-    for user in "${exclude_users[@]}"; do
-        # remove all instances of $user in $disable_users
-        user_list=("${user_list[@]//$user}")
+    # Remove all excluded users
+    for exclude in "${exclude_users[@]}"; do
+        change_users_list=("${change_users_list[@]/$exclude/}")
     done
 
     # Loop through each user and change their password
-    debug_print "Changing passwords for users in list [" "${user_list[@]}" "]"
-    for user in "${user_list[@]}"; do
+    debug_print "Changing passwords for users in list ${change_users_list[*]}"
+    for user in "${change_users_list[@]}"; do
         if ! echo "$user:$password" | sudo chpasswd; then
             echo "[X] ERROR: Failed to change password for $user."
         else
@@ -168,7 +170,7 @@ function create_ccdc_users {
         if id "$user" &>/dev/null; then
             echo "[*] $user already exists. Skipping..."
         else
-            echo "$user not found. Attempting to create..."
+            echo "[*] $user not found. Attempting to create..."
             if [ -f "/bin/bash" ]; then
                 sudo useradd -m -s /bin/bash "$user"
             elif [ -f "/bin/sh" ]; then
@@ -189,9 +191,19 @@ function create_ccdc_users {
 
 function disable_users {
     print_banner "Disabling users"
+
+    nologin_shell=""
+    if [ -f /usr/sbin/nologin ]; then
+        nologin_shell="/usr/sbin/nologin"
+    elif [ -f /sbin/nologin ]; then
+        nologin_shell="/sbin/nologin"
+    else
+        nologin_shell="/bin/false"
+    fi
+
     exclude_users=("${ccdc_users[@]}")
     exclude_users+=("root")
-    echo "[*] Currently excluded users:" "${exclude_users[@]}"
+    echo "[*] Currently excluded users: ${exclude_users[*]}"
     echo "[*] Would you like to exclude any additional users?"
     option=$(get_input_string "(y/N): ")
     if [ "$option" == "y" ]; then
@@ -203,22 +215,14 @@ function disable_users {
     fi
 
     echo "[*] Disabling users..."
+    # TODO: options for sh or other shells
     readarray -t disable_users < <(awk -F ':' '/bash/{print $1}' /etc/passwd)
-    for user in "${exclude_users[@]}"; do
-        # remove all instances of $user in $disable_users
-        disable_users=("${disable_users[@]//$user}")
+    # Remove all excluded users
+    for exclude in "${exclude_users[@]}"; do
+        disable_users=("${disable_users[@]/$exclude/}")
     done
 
-    nologin_shell=""
-    if [ -f /usr/sbin/nologin ]; then
-        nologin_shell="/usr/sbin/nologin"
-    elif [ -f /sbin/nologin ]; then
-        nologin_shell="/sbin/nologin"
-    else
-        nologin_shell="/bin/false"
-    fi
-
-    debug_print "Disabling users in list [" "${disable_users[@]}" "]"
+    debug_print "Disabling users in list ${disable_users[*]}"
     for user in "${disable_users[@]}"; do
         sudo usermod -s "$nologin_shell" "$user"
         echo "[*] Set shell for $user to $nologin_shell"
@@ -243,12 +247,12 @@ function remove_sudoers {
 
     echo "[*] Removing sudo users..."
     readarray -t unprivileged_users < <(awk -F ':' '/bash/{print $1}' /etc/passwd)
-    for user in "${exclude_users[@]}"; do
-        # remove all instances of $user in $disable_users
-        unprivileged_users=("${unprivileged_users[@]//$user}")
+    # Remove all excluded users
+    for exclude in "${exclude_users[@]}"; do
+        unprivileged_users=("${unprivileged_users[@]/$exclude/}")
     done
 
-    debug_print "Removing users in list [" "${unprivileged_users[@]}" "]"
+    debug_print "Removing users in list ${unprivileged_users[*]}"
     for user in "${unprivileged_users[@]}"; do
         sudo gpasswd -d "$user" "$sudo_group"
         echo "[*] Removed $user from $sudo_group"
