@@ -200,7 +200,6 @@ function setup_splunk {
     # Create splunk user/group
     echo "[*] Creating splunk user and group"
     sudo useradd splunk -d "$SPLUNKDIR"
-    sudo groupadd splunk
     echo "[*] Please provide user 'splunk' when prompted later in the script"
 
     # Set ACL to allow splunk to read any log files (execute needed for directories)
@@ -215,17 +214,18 @@ function setup_splunk {
         exit 1
     fi
 
-    if command -v systemctl &> /dev/null; then
-        echo "[*] Enabling systemd service"
-        sudo $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1 -user splunk
-    fi
-
     echo "[*] Setting splunk user"
     # TODO: fix password by pulling from /etc/passwd?
     sudo -H -u splunk $SPLUNKDIR/bin/splunk add user splunk -role Admin -password temporarypassword
 
     echo "[*] Starting splunk"
     sudo -H -u splunk $SPLUNKDIR/bin/splunk start --accept-license
+    
+    if command -v systemctl &> /dev/null; then
+        echo "[*] Enabling systemd service"
+        sudo $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1 -user splunk
+    fi
+
     if [ "$IP" == "indexer" ]; then
         setup_indexer
         # TODO: add firewall rules

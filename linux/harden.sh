@@ -118,7 +118,8 @@ function detect_system_info {
 function install_prereqs {
     print_banner "Installing prerequisites"
     # TODO: install a syslog daemon for Splunk?
-    sudo $pm install -y zip unzip wget curl
+    # Needed for both hardening and Splunk installation
+    sudo $pm install -y zip unzip wget curl acl
 }
 
 function create_ccdc_users {
@@ -232,8 +233,10 @@ function remove_sudoers {
 
     echo "[*] Removing sudo users..."
     for user in $targets; do
-        sudo gpasswd -d "$user" "$sudo_group"
-        echo "[*] Removed $user from $sudo_group"
+        if groups "$user" | grep -q "$sudo_group"; then
+            sudo gpasswd -d "$user" "$sudo_group"
+            echo "[*] Removed $user from $sudo_group"
+        fi
     done
 }
 
@@ -270,7 +273,7 @@ function setup_ufw {
             echo "[*] Rule added for port $port"
         done
         sudo ufw logging on
-        sudo ufw enable
+        sudo ufw --force enable
     else
         echo "[X] ERROR: Package ufw failed to install. Firewall will need to be configured manually"
     fi
@@ -347,7 +350,8 @@ function backups {
     echo "Enter directories/files to backup:"
     input=$(get_input_list)
     for item in $input; do
-        dirs_to_backup+=("$item")
+        path=$(realpath "$item")
+        dirs_to_backup+=("$path")
     done
 
     # Get backup storage name
@@ -361,6 +365,7 @@ function backups {
     # Get backup storage location
     while true; do
         backup_dir=$(get_input_string "Enter directory to place encrypted backups file (ex. /var/log/ ): ")
+        backup_dir=$(realpath "$backup_dir")
         if [ -e "$backup_dir" ]; then
             break
         fi
