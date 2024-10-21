@@ -83,18 +83,18 @@ function detect_system_info {
     print_banner "Detecting system info"
     echo "[*] Detecting package manager"
 
-    if command -v apt &>/dev/null; then
-        echo "[*] apt detected (Debian-based OS)"
+    if ! sudo which apt-get &> /dev/null; then
+        echo "[*] apt/apt-get detected (Debian-based OS)"
         echo "[*] Updating package list"
-        sudo apt update
-        pm="apt"
-    elif command -v dnf &>/dev/null; then
+        sudo apt-get update
+        pm="apt-get"
+    elif ! sudo which dnf &> /dev/null; then
         echo "[*] dnf detected (Fedora-based OS)"
         pm="dnf"
-    elif command -v zypper &>/dev/null; then
+    elif ! sudo which zypper &> /dev/null; then
         echo "[*] zypper detected (OpenSUSE-based OS)"
         pm="zypper"
-    elif command -v yum &>/dev/null; then
+    elif ! sudo which yum &> /dev/null; then
         echo "[*] yum detected (RHEL-based OS)"
         pm="yum"
     else
