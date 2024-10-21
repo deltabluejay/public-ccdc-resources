@@ -134,7 +134,7 @@ function install_splunk {
                 echo
                 download "$rpm" splunk.rpm
                 if command -v zypper &>/dev/null; then
-                    sudo zypper install ./splunk.rpm -y
+                    sudo zypper install -y ./splunk.rpm
                 else
                     sudo yum install ./splunk.rpm -y
                 fi
@@ -157,7 +157,7 @@ function install_splunk {
                 echo
                 download "$arm_rpm" splunk.rpm
                 if command -v zypper &>/dev/null; then
-                    sudo zypper install ./splunk.rpm -y
+                    sudo zypper install -y ./splunk.rpm
                 else
                     sudo yum install ./splunk.rpm -y
                 fi
@@ -222,6 +222,11 @@ function setup_splunk {
     # Create splunk user/group
     echo "[*] Creating splunk user and group"
     sudo useradd splunk -d "$SPLUNKDIR"
+    if ! getent group "splunk" > /dev/null; then
+        sudo groupadd splunk
+        sudo usermod -aG splunk splunk
+    fi
+    sudo passwd splunk
     echo "[*] Please provide user 'splunk' when prompted later in the script"
 
     # Set ACL to allow splunk to read any log files (execute needed for directories)
