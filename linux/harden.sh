@@ -194,7 +194,14 @@ function change_passwords {
     if [ "$option" == "y" ]; then
         exclusions=$(exclude_users "${exclusions[@]}")
     fi
-    targets=$(get_users '$3 >= 1000 && $1 != "nobody" {print $1}' "${exclusions[*]}")
+
+    if [ "$pm" == "yum" ]; then
+        # CentOS starts numbering at 500
+        targets=$(get_users '$3 >= 500 && $1 != "nobody" {print $1}' "${exclusions[*]}")
+    else
+        # Otherwise 1000
+        targets=$(get_users '$3 >= 1000 && $1 != "nobody" {print $1}' "${exclusions[*]}")
+    fi
 
     echo "[*] Enter the new password to be used for all users."
     while true; do
@@ -397,7 +404,7 @@ function backups {
         input=$(get_input_list)
         for item in $input; do
             path=$(readlink -f "$item")
-            if sudo [ ! -e "$path" ]; then
+            if sudo [ -e "$path" ]; then
                 dirs_to_backup+=("$path")
             else
                 echo "[X] ERROR: $path is invalid or does not exist"
