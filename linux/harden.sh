@@ -152,7 +152,7 @@ function get_password {
             break
         fi
     done
-    return "$password"
+    echo "$password"
 }
 
 function create_ccdc_users {
@@ -415,24 +415,7 @@ function backups {
     done
     # Get backup encryption password
     echo "[*] Enter the backup encryption password."
-    while true; do
-        password=""
-        confirm_password=""
-
-        # Ask for password
-        password=$(get_silent_input_string "Enter password: ")
-        echo
-
-        # Confirm password
-        confirm_password=$(get_silent_input_string "Confirm password: ")
-        echo
-
-        if [ "$password" != "$confirm_password" ]; then
-            echo "Passwords do not match. Please retry."
-        else
-            break
-        fi
-    done
+    password=$(get_password)
 
     # Zip all directories and store in backups directory
     sudo mkdir "$backup_dir/backups"
