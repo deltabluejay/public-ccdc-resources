@@ -636,6 +636,7 @@ function install_snoopy {
                 sudo chmod 666 $SNOOPY_LOG
                 echo "filter_chain = \"exclude_spawns_of:splunkd,btool\"" | sudo tee -a $SNOOPY_CONFIG
                 echo "output = file:$SNOOPY_LOG" | sudo tee -a $SNOOPY_CONFIG
+                echo
                 echo "[*] Set Snoopy output to $SNOOPY_LOG."
                 sudo -H -u splunk $SPLUNKDIR/bin/splunk add monitor "$SNOOPY_LOG" -index "snoopy" -sourcetype "snoopy"
             else

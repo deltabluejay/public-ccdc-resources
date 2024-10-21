@@ -237,6 +237,8 @@ function remove_sudoers {
     fi
     targets=$(get_users '{print $1}' "${exclusions[*]}")
 
+    echo
+
     echo "[*] Removing sudo users..."
     for user in $targets; do
         if groups "$user" | grep -q "$sudo_group"; then
@@ -355,7 +357,7 @@ function backups {
     echo "Enter directories/files to backup:"
     input=$(get_input_list)
     for item in $input; do
-        path=$(realpath "$item")
+        path=$(readlink -f "$item")
         if sudo [ ! -e "$path" ]; then
             dirs_to_backup+=("$path")
         else
@@ -374,7 +376,7 @@ function backups {
     # Get backup storage location
     while true; do
         backup_dir=$(get_input_string "Enter directory to place encrypted backups file (ex. /var/log/ ): ")
-        backup_dir=$(realpath "$backup_dir")
+        backup_dir=$(readlink -f "$backup_dir")
         if [ -e "$backup_dir" ]; then
             break
         fi
