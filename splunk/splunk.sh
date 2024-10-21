@@ -221,11 +221,6 @@ function setup_splunk {
     # TODO: fix password by pulling from /etc/passwd?
     # sudo -H -u splunk $SPLUNKDIR/bin/splunk add user splunk -role Admin -password temporarypassword
 
-    if command -v systemctl &> /dev/null; then
-        echo "[*] Enabling systemd service"
-        sudo $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1 -user splunk
-    fi
-
     if [ "$IP" == "indexer" ]; then
         setup_indexer
         # TODO: add firewall rules
@@ -678,6 +673,13 @@ function main {
 
     setup_monitors
     add_additional_logs
+
+    if command -v systemctl &> /dev/null; then
+        sudo -H -u splunk $SPLUNKDIR/bin/splunk stop
+        echo "[*] Enabling systemd service"
+        sudo -H -u splunk $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1 -user splunk
+        sudo -H -u splunk $SPLUNKDIR/bin/splunk start
+    fi
 
     install_auditd
     install_snoopy
