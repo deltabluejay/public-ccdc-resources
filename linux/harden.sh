@@ -195,7 +195,7 @@ function change_passwords {
         exclusions=$(exclude_users "${exclusions[@]}")
     fi
 
-    if [ "$pm" == "yum" ]; then
+    if sudo [ -e "/etc/centos-release" ] ; then
         # CentOS starts numbering at 500
         targets=$(get_users '$3 >= 500 && $1 != "nobody" {print $1}' "${exclusions[*]}")
     else

@@ -691,7 +691,7 @@ function main {
     if command -v systemctl &> /dev/null; then
         sudo -H -u splunk $SPLUNKDIR/bin/splunk stop
         echo "[*] Enabling systemd service"
-        sudo -H -u splunk $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1 -user splunk
+        sudo $SPLUNKDIR/bin/splunk enable boot-start -systemd-managed 1 -user splunk
         sudo -H -u splunk $SPLUNKDIR/bin/splunk start
     fi
 
