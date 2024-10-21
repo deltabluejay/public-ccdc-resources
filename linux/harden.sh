@@ -83,18 +83,27 @@ function detect_system_info {
     print_banner "Detecting system info"
     echo "[*] Detecting package manager"
 
-    if ! sudo which apt-get &> /dev/null; then
+    sudo which apt-get &> /dev/null
+    apt=$?
+    sudo which dnf &> /dev/null
+    dnf=$?
+    sudo which zypper &> /dev/null
+    zypper=$?
+    sudo which yum &> /dev/null
+    yum=$?
+
+    if [ $apt == 0 ]; then
         echo "[*] apt/apt-get detected (Debian-based OS)"
         echo "[*] Updating package list"
         sudo apt-get update
         pm="apt-get"
-    elif ! sudo which dnf &> /dev/null; then
+    elif [ $dnf == 0 ]; then
         echo "[*] dnf detected (Fedora-based OS)"
         pm="dnf"
-    elif ! sudo which zypper &> /dev/null; then
+    elif [ $zypper == 0 ]; then
         echo "[*] zypper detected (OpenSUSE-based OS)"
         pm="zypper"
-    elif ! sudo which yum &> /dev/null; then
+    elif [ $yum == 0 ]; then
         echo "[*] yum detected (RHEL-based OS)"
         pm="yum"
     else
@@ -270,7 +279,8 @@ function setup_ufw {
     print_banner "Configuring ufw"
 
     sudo $pm install -y ufw
-    if ! sudo which ufw &> /dev/null; then
+    sudo which ufw &> /dev/null
+    if [ $? == 0 ]; then
         echo -e "[*] Package ufw installed successfully\n"
         echo "[*] Which ports should be opened for incoming traffic?"
         echo "      WARNING: Do NOT forget to add 22/SSH if needed- please don't accidentally lock yourself out of the system!"
