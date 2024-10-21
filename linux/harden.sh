@@ -284,6 +284,7 @@ function remove_sudoers {
     echo "[*] Removing sudo users..."
     for user in $targets; do
         if groups "$user" | grep -q "$sudo_group"; then
+            echo "[*] Removing $user from $sudo_group group"
             sudo gpasswd -d "$user" "$sudo_group"
         fi
     done
@@ -516,6 +517,7 @@ function main {
 
     echo "[*] End of script"
     echo "[*] Script log can be viewed at $LOG"
+    echo "[*] ***Please install system updates now***"
 }
 
 # Parse arguments

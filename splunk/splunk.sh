@@ -133,7 +133,11 @@ function install_splunk {
                 print_banner "Installing .rpm package"
                 echo
                 download "$rpm" splunk.rpm
-                sudo yum install ./splunk.rpm -y
+                if command -v zypper &>/dev/null; then
+                    sudo zypper install ./splunk.rpm -y
+                else
+                    sudo yum install ./splunk.rpm -y
+                fi
             ;;
             tgz|tar|linux )
                 print_banner "Installing generic .tgz package"
@@ -152,7 +156,11 @@ function install_splunk {
                 print_banner "Installing ARM .rpm package"
                 echo
                 download "$arm_rpm" splunk.rpm
-                sudo yum install ./splunk.rpm -y
+                if command -v zypper &>/dev/null; then
+                    sudo zypper install ./splunk.rpm -y
+                else
+                    sudo yum install ./splunk.rpm -y
+                fi
             ;;
             arm_tgz )
                 print_banner "Installing generic ARM .tgz package"
