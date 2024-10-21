@@ -133,6 +133,28 @@ function install_prereqs {
     sudo $pm install -y zip unzip wget curl acl
 }
 
+function get_password {
+    while true; do
+        password=""
+        confirm_password=""
+
+        # Ask for password
+        password=$(get_silent_input_string "Enter password: ")
+        echo
+
+        # Confirm password
+        confirm_password=$(get_silent_input_string "Confirm password: ")
+        echo
+
+        if [ "$password" != "$confirm_password" ]; then
+            echo "Passwords do not match. Please retry."
+        else
+            break
+        fi
+    done
+    return "$password"
+}
+
 function create_ccdc_users {
     print_banner "Creating ccdc users"
     for user in "${ccdc_users[@]}"; do
@@ -150,8 +172,12 @@ function create_ccdc_users {
             fi
 
             while true; do
-                sudo passwd "$user"
-                if [ $? == 0 ]; then
+                echo "[*] Enter the password for $user."
+                password=$(get_password)
+                if ! echo "$user:$password" | sudo chpasswd; then
+                    echo "[X] ERROR: Failed to change password for $user"
+                else
+                    echo "[*] Password for $user has been changed."
                     break
                 fi
             done
@@ -178,24 +204,7 @@ function change_passwords {
     targets=$(get_users '$3 >= 1000 && $1 != "nobody" {print $1}' "${exclusions[*]}")
 
     echo "[*] Enter the new password to be used for all users."
-    while true; do
-        password=""
-        confirm_password=""
-
-        # Ask for password
-        password=$(get_silent_input_string "Enter password: ")
-        echo
-
-        # Confirm password
-        confirm_password=$(get_silent_input_string "Confirm password: ")
-        echo
-
-        if [ "$password" != "$confirm_password" ]; then
-            echo "Passwords do not match. Please retry."
-        else
-            break
-        fi
-    done
+    password=$(get_password)
 
     echo
 
