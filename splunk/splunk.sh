@@ -103,6 +103,20 @@ function print_banner {
     echo
 }
 
+function download {
+    url=$1
+    output=$2
+    sudo wget -O "$output" --no-check-certificate "$url"
+    if [ $? -ne 0 ]; then
+        echo "[X] ERROR: Failed to download with wget. Trying curl..."
+        sudo curl -L -o "$output" -k "$url"
+        if [ $? -ne 0 ]; then
+            echo "[X] ERROR: Failed to download with curl. Exiting..."
+            exit 1
+        fi
+    fi
+}
+
 # Downloads and installs correct version for distribution
 function install_splunk {
     # If Splunk does not already exist:
@@ -112,38 +126,38 @@ function install_splunk {
             deb|debian )
                 print_banner "Installing .deb package"
                 echo
-                sudo wget -O splunk.deb "$deb"
+                download "$deb" splunk.deb
                 sudo dpkg -i ./splunk.deb
             ;;
             rpm )
                 print_banner "Installing .rpm package"
                 echo
-                sudo wget -O splunk.rpm "$rpm"
+                download "$rpm" splunk.rpm
                 sudo yum install ./splunk.rpm -y
             ;;
             tgz|tar|linux )
                 print_banner "Installing generic .tgz package"
                 echo
-                sudo wget -O splunk.tgz "$tgz"
+                download "$tgz" splunk.tgz
                 echo "******* Extracting to $SPLUNKDIR *******"
                 sudo tar -xvf splunk.tgz -C /opt/ &> /dev/null
             ;;
             arm_deb )
                 print_banner "Installing ARM .deb package" 
                 echo
-                sudo wget -O splunk.deb "$arm_deb"
+                download "$arm_deb" splunk.deb
                 sudo dpkg -i ./splunk.deb
             ;;
             arm_rpm )
                 print_banner "Installing ARM .rpm package"
                 echo
-                sudo wget -O splunk.rpm "$arm_rpm"
+                download "$arm_rpm" splunk.rpm
                 sudo yum install ./splunk.rpm -y
             ;;
             arm_tgz )
                 print_banner "Installing generic ARM .tgz package"
                 echo
-                sudo wget -O splunk.tgz "$arm_tgz"
+                download "$arm_tgz" splunk.tgz
                 echo "******* Extracting to $SPLUNKDIR *******"
                 sudo tar -xvf splunk.tgz -C /opt/ &> /dev/null
             ;;
@@ -155,7 +169,7 @@ function install_splunk {
                 else
                     print_banner "Downloading $1"
                     echo
-                    sudo wget "$pkg"
+                    download "$pkg" splunk.pkg
                     echo "Please install Splunk manually to $SPLUNKDIR, then run the script again to configure it."
                     exit
                 fi

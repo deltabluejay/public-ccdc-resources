@@ -148,7 +148,14 @@ function create_ccdc_users {
                 echo "[X] ERROR: Could not find valid shell"
                 exit 1
             fi
-            sudo passwd "$user"
+
+            while true; do
+                sudo passwd "$user"
+                if [ $? == 0 ]; then
+                    break
+                fi
+            done
+
             if [ "$user" == "ccdcuser1" ]; then
                 echo "[*] Adding to $sudo_group group"
                 sudo usermod -aG $sudo_group "$user"
@@ -364,7 +371,7 @@ function backups {
     
     # Enter directories to backup
     repeat=true
-    while repeat; do
+    while $repeat; do
         repeat=false
         dirs_to_backup=()
         echo "Enter directories/files to backup:"
