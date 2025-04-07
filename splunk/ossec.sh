@@ -153,8 +153,8 @@ function install_ossec {
         info "Configuring OSSEC server..."
 
         # Download custom config
-        sudo rm $OSSEC_DIR/etc/ossec.conf 2>/dev/null
-        sudo rm $OSSEC_DIR/etc/ossec-agent.conf 2>/dev/null
+        sudo mv $OSSEC_DIR/etc/ossec.conf $OSSEC_DIR/etc/ossec.conf.bak 2>/dev/null
+        sudo mv $OSSEC_DIR/etc/ossec-agent.conf  $OSSEC_DIR/etc/ossec-agent.conf.bak 2>/dev/null
         download $GITHUB_URL/splunk/linux/ossec.conf ./ossec.conf
         sudo mv ossec.conf $OSSEC_DIR/etc/ossec.conf
         sudo chown root:ossec $OSSEC_DIR/etc/ossec.conf
@@ -166,7 +166,7 @@ function install_ossec {
             -out $OSSEC_DIR/etc/sslmanager.cert \
             -days 365 \
             -subj "/C=US/ST=./L=./O=BYU-CCDC/OU=./CN=./emailAddress=." \
-            -nodes
+            -nodes 1>/dev/null
         sudo chown root:ossec $OSSEC_DIR/etc/sslmanager.cert
         sudo chown root:ossec $OSSEC_DIR/etc/sslmanager.key
 
@@ -193,8 +193,8 @@ function install_ossec {
         fi
 
         # Download custom config
-        sudo rm $OSSEC_DIR/etc/ossec.conf 2>/dev/null
-        sudo rm $OSSEC_DIR/etc/ossec-agent.conf 2>/dev/null
+        sudo mv $OSSEC_DIR/etc/ossec.conf $OSSEC_DIR/etc/ossec.conf.bak 2>/dev/null
+        sudo mv $OSSEC_DIR/etc/ossec-agent.conf  $OSSEC_DIR/etc/ossec-agent.conf.bak 2>/dev/null
         download $GITHUB_URL/splunk/linux/ossec-agent.conf ./ossec-agent.conf
 
         # Replace dynamic values
@@ -244,6 +244,9 @@ function main {
     wget -q -O - https://updates.atomicorp.com/installers/atomic | sudo bash
     autodetect_os
     setup_ossec
+
+    print_banner "End of script"
+    info "Don't forget to open the necessary ports in your firewall!"
 }
 
 while getopts "f:ig:l:" opt; do
