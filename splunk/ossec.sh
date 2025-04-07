@@ -141,20 +141,20 @@ function setup_ossec_server {
 
     # Download custom server config
     info "Downloading custom OSSEC server configuration..."
+    SERVER_CONF="$OSSEC_DIR/etc/ossec.conf"
     download $GITHUB_URL/splunk/linux/ossec.conf ./ossec.conf
-    sudo mv ossec.conf $OSSEC_DIR/etc/ossec.conf
-    sudo chown root:ossec $OSSEC_DIR/etc/ossec.conf
-    sudo chmod 660 $OSSEC_DIR/etc/ossec.conf
+    sudo mv ossec.conf $SERVER_CONF
+    sudo chown root:ossec $SERVER_CONF
+    sudo chmod 660 $SERVER_CONF
 
     # Download custom shared client config
     info "Downloading custom shared OSSEC client configuration..."
+    SHARED_CONF="$OSSEC_DIR/etc/shared/agent.conf"
     download $GITHUB_URL/splunk/linux/ossec-agent-shared.conf ./agent.conf
-
-    sed -i "s/{SERVER_IP}/$IP/" ossec-agent.conf
-
-    sudo mv ossec-agent.conf $OSSEC_DIR/etc/shared/agent.conf
-    sudo chown root:ossec $OSSEC_DIR/etc/shared/agent.conf
-    sudo chmod 660 $OSSEC_DIR/etc/shared/agent.conf
+    sed -i "s/{SERVER_IP}/$IP/" agent.conf
+    sudo mv agent.conf $SHARED_CONF
+    sudo chown root:ossec $SHARED_CONF
+    sudo chmod 660 $SHARED_CONF
 
     # Start OSSEC
     info "Starting OSSEC server..."
@@ -206,21 +206,22 @@ function install_ossec {
     if [ $SERVER == true ]; then
         setup_ossec_server
     else
-        # Download custom config
-        # sudo sed -i "s/<server-ip>[\d\.]+</server-ip>/<server-ip>$IP</server-ip>/" $OSSEC_DIR/etc/ossec.conf
+        # Backup old configuration files
         sudo mv $OSSEC_DIR/etc/ossec.conf $OSSEC_DIR/etc/ossec.conf.bak 2>/dev/null
         sudo mv $OSSEC_DIR/etc/ossec-agent.conf  $OSSEC_DIR/etc/ossec-agent.conf.bak 2>/dev/null
         sudo mv $OSSEC_DIR/etc/shared/agent.conf  $OSSEC_DIR/etc/shared/agent.conf.bak 2>/dev/null
         sudo mv $OSSEC_DIR/etc/shared/ossec-agent.conf $OSSEC_DIR/etc/shared/ossec-agent.conf.bak 2>/dev/null
         
+        # Download custom config
+        info "Downloading OSSEC client configuration..."
+        CLIENT_CONFIG="$OSSEC_DIR/etc/ossec.conf"
+        # sudo sed -i "s/<server-ip>[\d\.]+</server-ip>/<server-ip>$IP</server-ip>/" $OSSEC_DIR/etc/ossec.conf
         download $GITHUB_URL/splunk/linux/ossec-agent-local.conf ./ossec-agent.conf
-
-        # # Replace dynamic values
+        # Replace dynamic values
         sed -i "s/{SERVER_IP}/$IP/" ossec-agent.conf
-
-        sudo mv ossec-agent.conf $OSSEC_DIR/etc/ossec.conf
-        sudo chown root:ossec $OSSEC_DIR/etc/ossec.conf
-        sudo chmod 660 $OSSEC_DIR/etc/ossec.conf
+        sudo mv ossec-agent.conf $CLIENT_CONFIG
+        sudo chown root:ossec $CLIENT_CONFIG
+        sudo chmod 660 $CLIENT_CONFIG
 
         # Register agent
         sudo $OSSEC_DIR/bin/agent-auth -m $IP -p 1515
