@@ -38,6 +38,7 @@ SERVER=false
 OSSEC_DIR="/var/ossec"
 GITHUB_URL="https://raw.githubusercontent.com/BYU-CCDC/public-ccdc-resources/main"
 LOCAL=false
+PM=""
 #####################################################
 
 ##################### FUNCTIONS #####################
@@ -72,6 +73,16 @@ function autodetect_os {
         error "Could not detect package manager / OS"
         exit 1
     fi
+}
+
+function print_banner {
+    echo
+    echo "#######################################"
+    echo "#"
+    echo "#   $1"
+    echo "#"
+    echo "#######################################"
+    echo
 }
 
 # TODO: add color?
@@ -111,16 +122,41 @@ function download {
 }
 
 function install_ossec {
-    sudo $pm install inotify-tools inotify-tools-devel
+    print_banner "Installing OSSEC"
+
+    if sudo [[ -e "$OSSEC_DIR" ]]; then
+        info "OSSEC directory already exists at $OSSEC_DIR. Skipping installation."
+        return 0
+    fi
+
+    # Install dependencies
+    sudo $PM install -y inotify-tools
+    if [[ "$PM" != "apt-get" ]]; then
+        sudo $PM install -y inotify-tools-devel
+    fi
+
     # Server installation
     if [ $SERVER == true ]; then
-        # Install OSSEC
-        sudo $pm install ossec-hids-server
+        info "Starting OSSEC server installation..."
+        sudo $PM install -y ossec-hids-server
+
+        if [ $? -ne 0 ]; then
+            error "Failed to install OSSEC server"
+            exit 1
+        elif sudo [ ! -d "$OSSEC_DIR" ]; then
+            error "OSSEC installation directory not found"
+            exit 1
+        else
+            info "OSSEC server installation completed successfully"
+        fi
+
+        info "Configuring OSSEC server..."
 
         # Download custom config
         sudo rm $OSSEC_DIR/etc/ossec.conf 2>/dev/null
         sudo rm $OSSEC_DIR/etc/ossec-agent.conf 2>/dev/null
-        download $GITHUB_URL/splunk/linux/ossec.conf $OSSEC_DIR/etc/ossec.conf
+        download $GITHUB_URL/splunk/linux/ossec.conf ./ossec.conf
+        sudo mv ossec.conf $OSSEC_DIR/etc/ossec.conf
         sudo chown root:ossec $OSSEC_DIR/etc/ossec.conf
         sudo chmod 660 $OSSEC_DIR/etc/ossec.conf
 
@@ -135,6 +171,7 @@ function install_ossec {
         sudo chown root:ossec $OSSEC_DIR/etc/sslmanager.key
 
         # Start OSSEC
+        info "Starting OSSEC server..."
         sudo systemctl start ossec
 
         # Start ossec-authd for automatic agent registration
@@ -142,8 +179,18 @@ function install_ossec {
     
     # Client installation
     else
-        # Install OSSEC
-        sudo $pm install ossec-hids-agent
+        info "Starting OSSEC client installation..."
+        sudo $PM install -y ossec-hids-agent
+
+        if [ $? -ne 0 ]; then
+            error "Failed to install OSSEC client"
+            exit 1
+        elif sudo [ ! -d "$OSSEC_DIR" ]; then
+            error "OSSEC installation directory not found"
+            exit 1
+        else
+            info "OSSEC client installation completed successfully"
+        fi
 
         # Download custom config
         sudo rm $OSSEC_DIR/etc/ossec.conf 2>/dev/null
@@ -153,27 +200,27 @@ function install_ossec {
         # Replace dynamic values
         sed -i "s/{SERVER_IP}/$IP/" ossec-agent.conf
 
-        if [[ -f "/var/log/syslog" ]]; then
-            # If /var/log/syslog exists, use it for syslog location
-            sed -i "s/{SYSLOG_LOCATION}/\/var\/log\/syslog/" ossec-agent.conf
-        elif [[ -f "/var/log/messages" ]]; then
-            # If /var/log/messages exists, use it for syslog location
-            sed -i "s/{SYSLOG_LOCATION}/\/var\/log\/messages/" ossec-agent.conf
-        else
-            error "Neither /var/log/syslog nor /var/log/messages found. Please set the syslog location manually."
-        fi
+        # if [[ -f "/var/log/syslog" ]]; then
+        #     # If /var/log/syslog exists, use it for syslog location
+        #     sed -i "s/{SYSLOG_LOCATION}/\/var\/log\/syslog/" ossec-agent.conf
+        # elif [[ -f "/var/log/messages" ]]; then
+        #     # If /var/log/messages exists, use it for syslog location
+        #     sed -i "s/{SYSLOG_LOCATION}/\/var\/log\/messages/" ossec-agent.conf
+        # else
+        #     error "Neither /var/log/syslog nor /var/log/messages found. Please set the syslog location manually."
+        # fi
 
-        if [[ -f "/var/log/auth.log" ]]; then
-            # If /var/log/auth.log exists, use it for auth log location
-            sed -i "s/{AUTHLOG_LOCATION}/\/var\/log\/auth.log/" ossec-agent.conf
-        elif [[ -f "/var/log/secure" ]]; then
-            # If /var/log/secure exists, use it for auth log location
-            sed -i "s/{AUTHLOG_LOCATION}/\/var\/log\/secure/" ossec-agent.conf
-        else
-            error "Neither /var/log/auth.log nor /var/log/secure found. Please set the auth log location manually."
-        fi
+        # if [[ -f "/var/log/auth.log" ]]; then
+        #     # If /var/log/auth.log exists, use it for auth log location
+        #     sed -i "s/{AUTHLOG_LOCATION}/\/var\/log\/auth.log/" ossec-agent.conf
+        # elif [[ -f "/var/log/secure" ]]; then
+        #     # If /var/log/secure exists, use it for auth log location
+        #     sed -i "s/{AUTHLOG_LOCATION}/\/var\/log\/secure/" ossec-agent.conf
+        # else
+        #     error "Neither /var/log/auth.log nor /var/log/secure found. Please set the auth log location manually."
+        # fi
 
-        mv ossec-agent.conf $OSSEC_DIR/etc/ossec.conf
+        sudo mv ossec-agent.conf $OSSEC_DIR/etc/ossec.conf
         sudo chown root:ossec $OSSEC_DIR/etc/ossec.conf
         sudo chmod 660 $OSSEC_DIR/etc/ossec.conf
 
@@ -181,15 +228,22 @@ function install_ossec {
         sudo $OSSEC_DIR/bin/agent-auth -m $IP -p 1515
 
         # Start OSSEC
+        info "Starting OSSEC client..."
         sudo systemctl start ossec-hids
     fi
 }
 
+function setup_ossec {
+    install_ossec
+}
+#####################################################
+
+######################## MAIN #######################
 function main {
     # Add Atomicorp repo
     wget -q -O - https://updates.atomicorp.com/installers/atomic | sudo bash
     autodetect_os
-    install_ossec
+    setup_ossec
 }
 
 while getopts "f:ig:l:" opt; do
@@ -220,3 +274,4 @@ while getopts "f:ig:l:" opt; do
 done
 
 main
+#####################################################
