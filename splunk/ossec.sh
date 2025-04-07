@@ -121,10 +121,53 @@ function download {
     fi
 }
 
+function setup_ossec_server {
+    # Generate server key signing certificate
+    info "Generating server keys..."
+    sudo openssl req -x509 -newkey rsa:4096 \
+        -keyout $OSSEC_DIR/etc/sslmanager.key \
+        -out $OSSEC_DIR/etc/sslmanager.cert \
+        -days 365 \
+        -subj "/C=US/ST=./L=./O=BYU-CCDC/OU=./CN=./emailAddress=." \
+        -nodes > /dev/null
+    sudo chown root:ossec $OSSEC_DIR/etc/sslmanager.cert
+    sudo chown root:ossec $OSSEC_DIR/etc/sslmanager.key
+
+    # Backup old configuration files
+    sudo mv $OSSEC_DIR/etc/ossec.conf $OSSEC_DIR/etc/ossec.conf.bak 2>/dev/null
+    sudo mv $OSSEC_DIR/etc/ossec-agent.conf $OSSEC_DIR/etc/ossec-agent.conf.bak 2>/dev/null
+    sudo mv $OSSEC_DIR/etc/shared/ossec-agent.conf $OSSEC_DIR/etc/shared/ossec-agent.conf.bak 2>/dev/null
+
+    # Download custom server config
+    info "Downloading custom OSSEC server configuration..."
+    download $GITHUB_URL/splunk/linux/ossec.conf ./ossec.conf
+    sudo mv ossec.conf $OSSEC_DIR/etc/ossec.conf
+    sudo chown root:ossec $OSSEC_DIR/etc/ossec.conf
+    sudo chmod 660 $OSSEC_DIR/etc/ossec.conf
+
+    # Download custom shared client config
+    info "Downloading custom shared OSSEC client configuration..."
+    download $GITHUB_URL/splunk/linux/ossec-agent-shared.conf ./ossec-agent.conf
+
+    sed -i "s/{SERVER_IP}/$IP/" ossec-agent.conf
+
+    sudo mv ossec-agent.conf $OSSEC_DIR/etc/shared/ossec-agent.conf
+    sudo chown root:ossec $OSSEC_DIR/etc/shared/ossec-agent.conf
+    sudo chmod 660 $OSSEC_DIR/etc/shared/ossec-agent.conf
+
+    # Start OSSEC
+    info "Starting OSSEC server..."
+    sudo systemctl start ossec
+
+    # Start ossec-authd for automatic agent registration
+    sudo $OSSEC_DIR/bin/ossec-authd -p 1515 -n
+}
+
 function install_ossec {
     print_banner "Installing OSSEC"
 
-    if sudo [[ -e "$OSSEC_DIR" ]]; then
+    # Check if it's already installed
+    if sudo [ -e "$OSSEC_DIR" ]; then
         info "OSSEC directory already exists at $OSSEC_DIR. Skipping installation."
         return 0
     fi
@@ -135,90 +178,41 @@ function install_ossec {
         sudo $PM install -y inotify-tools-devel
     fi
 
-    # Server installation
+    # Install appropriate package
     if [ $SERVER == true ]; then
+        # Server installation
         info "Starting OSSEC server installation..."
         sudo $PM install -y ossec-hids-server
-
-        if [ $? -ne 0 ]; then
-            error "Failed to install OSSEC server"
-            exit 1
-        elif sudo [ ! -d "$OSSEC_DIR" ]; then
-            error "OSSEC installation directory not found"
-            exit 1
-        else
-            info "OSSEC server installation completed successfully"
-        fi
-
-        info "Configuring OSSEC server..."
-
-        # Download custom config
-        sudo mv $OSSEC_DIR/etc/ossec.conf $OSSEC_DIR/etc/ossec.conf.bak 2>/dev/null
-        sudo mv $OSSEC_DIR/etc/ossec-agent.conf  $OSSEC_DIR/etc/ossec-agent.conf.bak 2>/dev/null
-        download $GITHUB_URL/splunk/linux/ossec.conf ./ossec.conf
-        sudo mv ossec.conf $OSSEC_DIR/etc/ossec.conf
-        sudo chown root:ossec $OSSEC_DIR/etc/ossec.conf
-        sudo chmod 660 $OSSEC_DIR/etc/ossec.conf
-
-        # Generate server key signing certificate
-        sudo openssl req -x509 -newkey rsa:4096 \
-            -keyout $OSSEC_DIR/etc/sslmanager.key \
-            -out $OSSEC_DIR/etc/sslmanager.cert \
-            -days 365 \
-            -subj "/C=US/ST=./L=./O=BYU-CCDC/OU=./CN=./emailAddress=." \
-            -nodes 1>/dev/null
-        sudo chown root:ossec $OSSEC_DIR/etc/sslmanager.cert
-        sudo chown root:ossec $OSSEC_DIR/etc/sslmanager.key
-
-        # Start OSSEC
-        info "Starting OSSEC server..."
-        sudo systemctl start ossec
-
-        # Start ossec-authd for automatic agent registration
-        sudo $OSSEC_DIR/bin/ossec-authd -p 1515 -n
-    
-    # Client installation
     else
+        # Client installation
         info "Starting OSSEC client installation..."
         sudo $PM install -y ossec-hids-agent
+    fi
 
-        if [ $? -ne 0 ]; then
-            error "Failed to install OSSEC client"
-            exit 1
-        elif sudo [ ! -d "$OSSEC_DIR" ]; then
-            error "OSSEC installation directory not found"
-            exit 1
-        else
-            info "OSSEC client installation completed successfully"
-        fi
+    # Check if installation was successful
+    if [ $? -ne 0 ]; then
+        error "Failed to install OSSEC"
+        exit 1
+    elif sudo [ ! -d "$OSSEC_DIR" ]; then
+        error "OSSEC directory not found"
+        exit 1
+    else
+        info "OSSEC installation completed successfully"
+    fi
 
+    # Configure OSSEC
+    info "Configuring OSSEC..."
+    if [ $SERVER == true ]; then
+        setup_ossec_server
+    else
         # Download custom config
+        # sudo sed -i "s/<server-ip>[\d\.]+</server-ip>/<server-ip>$IP</server-ip>/" $OSSEC_DIR/etc/ossec.conf
         sudo mv $OSSEC_DIR/etc/ossec.conf $OSSEC_DIR/etc/ossec.conf.bak 2>/dev/null
         sudo mv $OSSEC_DIR/etc/ossec-agent.conf  $OSSEC_DIR/etc/ossec-agent.conf.bak 2>/dev/null
-        download $GITHUB_URL/splunk/linux/ossec-agent.conf ./ossec-agent.conf
+        download $GITHUB_URL/splunk/linux/ossec-agent-local.conf ./ossec-agent.conf
 
-        # Replace dynamic values
+        # # Replace dynamic values
         sed -i "s/{SERVER_IP}/$IP/" ossec-agent.conf
-
-        # if [[ -f "/var/log/syslog" ]]; then
-        #     # If /var/log/syslog exists, use it for syslog location
-        #     sed -i "s/{SYSLOG_LOCATION}/\/var\/log\/syslog/" ossec-agent.conf
-        # elif [[ -f "/var/log/messages" ]]; then
-        #     # If /var/log/messages exists, use it for syslog location
-        #     sed -i "s/{SYSLOG_LOCATION}/\/var\/log\/messages/" ossec-agent.conf
-        # else
-        #     error "Neither /var/log/syslog nor /var/log/messages found. Please set the syslog location manually."
-        # fi
-
-        # if [[ -f "/var/log/auth.log" ]]; then
-        #     # If /var/log/auth.log exists, use it for auth log location
-        #     sed -i "s/{AUTHLOG_LOCATION}/\/var\/log\/auth.log/" ossec-agent.conf
-        # elif [[ -f "/var/log/secure" ]]; then
-        #     # If /var/log/secure exists, use it for auth log location
-        #     sed -i "s/{AUTHLOG_LOCATION}/\/var\/log\/secure/" ossec-agent.conf
-        # else
-        #     error "Neither /var/log/auth.log nor /var/log/secure found. Please set the auth log location manually."
-        # fi
 
         sudo mv ossec-agent.conf $OSSEC_DIR/etc/ossec.conf
         sudo chown root:ossec $OSSEC_DIR/etc/ossec.conf
@@ -249,13 +243,14 @@ function main {
     info "Don't forget to open the necessary ports in your firewall!"
 }
 
-while getopts "f:ig:l:" opt; do
+while getopts "f:i:g:l:" opt; do
     case $opt in
         f)
             IP=$OPTARG
             ;;
         i)
             SERVER=true
+            IP="$OPTARG"
             ;;
         g)
             GITHUB_URL=$OPTARG
