@@ -1078,8 +1078,21 @@ function install_snoopy {
 
             # Restart snoopy
             # TODO: these commands aren't consistent across all systems
-            sudo $(which snoopyctl) disable || sudo /usr/local/sbin/snoopy-disable  
-            sudo $(which snoopyctl) enable || sudo /usr/local/sbin/snoopy-enable
+            if [ -x "/usr/local/sbin/snoopyctl" ]; then
+                sudo /usr/local/sbin/snoopyctl disable
+                sudo /usr/local/sbin/snoopyctl enable
+            elif [ -x "/usr/local/sbin/snoopy-enable" ] && [ -x "/usr/local/sbin/snoopy-disable" ]; then
+                sudo /usr/local/sbin/snoopy-disable
+                sudo /usr/local/sbin/snoopy-enable
+            elif sudo command -v snoopyctl >/dev/null 2>&1; then
+                sudo snoopyctl disable
+                sudo snoopyctl enable
+            elif command -v snoopyctl >/dev/null 2>&1; then
+                snoopyctl disable
+                snoopyctl enable
+            else
+                log_warning "Could not find snoopyctl or snoopy-enable/snoopy-disable scripts to restart snoopy. You may need to restart the server to apply changes."
+            fi
         else
             log_error "Could not find Snoopy config file. Please add \`output = file:/var/log/snoopy.log\` to the end of the config."
         fi
