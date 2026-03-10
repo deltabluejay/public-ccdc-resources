@@ -1063,15 +1063,19 @@ function install_snoopy {
         # If it succeeds
         SNOOPY_CONFIG='/etc/snoopy.ini'
         if sudo [ -f $SNOOPY_CONFIG ]; then
-            sudo touch /var/log/snoopy.log
+            # Download config
+            download $GITHUB_URL/log/snoopy/snoopy.ini "snoopy.ini"
+            sudo rm $SNOOPY_CONFIG
+            sudo mv snoopy.ini $SNOOPY_CONFIG
+            sudo chown root:root $SNOOPY_CONFIG
+            sudo chmod 644 $SNOOPY_CONFIG
+
             # Unfortunately required by snoopy in order to use a log file other than syslog/messages
+            sudo touch /var/log/snoopy.log
             sudo chmod 622 $SNOOPY_LOG
             sudo setfacl -m g:$SPLUNK_USERNAME:r /var/log/snoopy.log
-            echo 'filter_chain = "exclude_spawns_of:splunkd,btool"' | sudo tee -a $SNOOPY_CONFIG > /dev/null
-            echo "output = file:$SNOOPY_LOG" | sudo tee -a $SNOOPY_CONFIG > /dev/null
-            echo 'message_format = "\{\"cgroup\":\"%{cgroup:PATTERN}\",\"cmdline\":\"%{cmdline}\",\"cwd\":\"%{cwd}\",\"datetime\":\"%{datetime:fmt}\",\"domain\":\"%{domain}\",\"egid\":\"%{egid}\",\"egroup\":\"%{egroup}\",\"env\":\"%{env:VAR}\",\"env_all\":\"%{env_all}\",\"euid\":\"%{euid}\",\"eusername\":\"%{eusername}\",\"filename\":\"%{filename}\",\"gid\":\"%{gid}\",\"group\":\"%{group}\",\"hostname\":\"%{hostname}\",\"ipaddr\":\"%{ipaddr}\",\"login\":\"%{login}\",\"pid\":\"%{pid}\",\"ppid\":\"%{ppid}\",\"rpname\":\"%{rpname}\",\"sid\":\"%{sid}\",\"snoopy_configure_command\":\"%{snoopy_configure_command}\",\"snoopy_threads\":\"%{snoopy_threads}\",\"snoopy_version\":\"%{snoopy_version}\",\"snoopy_literal\":\"%{snoopy_literal:arg}\",\"systemd_unit_name\":\"%{systemd_unit_name}\",\"tid\":\"%{tid}\",\"tid_kernel\":\"%{tid_kernel}\",\"timestamp\":\"%{timestamp}\",\"timestamp_ms\":\"%{timestamp_ms}\",\"timestamp_us\":\"%{timestamp_us}\",\"tty\":\"%{tty}\",\"tty_uid\":\"%{tty_uid}\",\"tty_username\":\"%{tty_username}\",\"uid\":\"%{uid}\",\"username\":\"%{username}\"\}"' | sudo tee -a $SNOOPY_CONFIG > /dev/null
-            echo
             log_debug "Set Snoopy output to $SNOOPY_LOG."
+
             # Restart snoopy
             # TODO: these commands aren't consistent across all systems
             sudo $(which snoopyctl) disable || sudo /usr/local/sbin/snoopy-disable  
@@ -1196,10 +1200,6 @@ function main {
     echo "   Auditd successful? $(print_true_false $AUDITD_SUCCESSFUL)"
     echo "   Snoopy successful? $(print_true_false $SNOOPY_SUCCESSFUL)"
     # echo "   Sysmon successful? $SYSMON_SUCCESSFUL"
-    echo "   Added monitors for: "
-    for item in "${SUCCESSFUL_MONITORS[@]}"; do
-        echo "    - $item"
-    done
     echo
 }
 
@@ -1265,6 +1265,7 @@ while getopts "hp:P:df:irg:uSa:Ll:Vv:nD" opt; do
             ;;
         g)
             GITHUB_URL=$OPTARG
+            # TODO: strip trailing slash if it exists
             ;;
         S)
             SPLUNK_ONLY=true
