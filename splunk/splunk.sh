@@ -18,7 +18,7 @@
 ###################### GLOBALS ######################
 LOG='/var/log/ccdc/splunk.log'
 GITHUB_URL="https://raw.githubusercontent.com/BYU-CCDC/public-ccdc-resources/main"
-INDEXES=( 'system' 'web' 'network' 'windows' 'misc' 'snoopy' 'ossec' 'edr' )
+INDEXES=( 'nix' 'windows' 'web' 'network' 'snoopy' 'ossec' 'edr' )
 PM=""
 IP=""
 INDEXER=false
@@ -43,17 +43,17 @@ SPLUNK_PASSWORD=""
 PACKAGE_TYPES=("indexer_deb" "indexer_rpm" "indexer_tgz" "deb" "rpm" "tgz" "arm_deb" "arm_rpm" "arm_tgz")
 
 # Indexer
-indexer_deb="https://download.splunk.com/products/splunk/releases/10.0.2/linux/splunk-10.0.2-e2d18b4767e9-linux-amd64.deb"
-indexer_rpm="https://download.splunk.com/products/splunk/releases/10.0.2/linux/splunk-10.0.2-e2d18b4767e9.x86_64.rpm"
-indexer_tgz="https://download.splunk.com/products/splunk/releases/10.0.2/linux/splunk-10.0.2-e2d18b4767e9-linux-amd64.tgz"
+indexer_deb="https://download.splunk.com/products/splunk/releases/10.0.4/linux/splunk-10.0.4-5ea723e837ec-linux-amd64.deb"
+indexer_rpm="https://download.splunk.com/products/splunk/releases/10.0.4/linux/splunk-10.0.4-5ea723e837ec.x86_64.rpm"
+indexer_tgz="https://download.splunk.com/products/splunk/releases/10.0.4/linux/splunk-10.0.4-5ea723e837ec-linux-amd64.tgz"
 
 # Forwarder
-deb="https://download.splunk.com/products/universalforwarder/releases/10.0.2/linux/splunkforwarder-10.0.2-e2d18b4767e9-linux-amd64.deb"
-rpm="https://download.splunk.com/products/universalforwarder/releases/10.0.2/linux/splunkforwarder-10.0.2-e2d18b4767e9.x86_64.rpm"
-tgz="https://download.splunk.com/products/universalforwarder/releases/10.0.2/linux/splunkforwarder-10.0.2-e2d18b4767e9-linux-amd64.tgz"
-arm_deb="https://download.splunk.com/products/universalforwarder/releases/10.0.2/linux/splunkforwarder-10.0.2-e2d18b4767e9-linux-arm64.deb"
-arm_rpm="https://download.splunk.com/products/universalforwarder/releases/10.0.2/linux/splunkforwarder-10.0.2-e2d18b4767e9.aarch64.rpm"
-arm_tgz="https://download.splunk.com/products/universalforwarder/releases/10.0.2/linux/splunkforwarder-10.0.2-e2d18b4767e9-linux-arm64.tgz"
+deb="https://download.splunk.com/products/universalforwarder/releases/10.0.4/linux/splunkforwarder-10.0.4-5ea723e837ec-linux-amd64.deb"
+rpm="https://download.splunk.com/products/universalforwarder/releases/10.0.4/linux/splunkforwarder-10.0.4-5ea723e837ec.x86_64.rpm"
+tgz="https://download.splunk.com/products/universalforwarder/releases/10.0.4/linux/splunkforwarder-10.0.4-5ea723e837ec-linux-amd64.tgz"
+arm_deb="https://download.splunk.com/products/universalforwarder/releases/10.0.4/linux/splunkforwarder-10.0.4-5ea723e837ec-linux-arm64.deb"
+arm_rpm="https://download.splunk.com/products/universalforwarder/releases/10.0.4/linux/splunkforwarder-10.0.4-5ea723e837ec.aarch64.rpm"
+arm_tgz="https://download.splunk.com/products/universalforwarder/releases/10.0.4/linux/splunkforwarder-10.0.4-5ea723e837ec-linux-arm64.tgz"
 
 ### 9.2.10 ###
 # Indexer
@@ -921,7 +921,6 @@ function add_monitor {
             return
         fi
         log_info "Successfully added monitor for $source"
-        SUCCESSFUL_MONITORS+=("$source")
     else
         log_error "No file or dir found at $source"
     fi
@@ -947,290 +946,6 @@ function add_script {
         SUCCESSFUL_MONITORS+=("$source")
     else
         log_error "No file or dir found at $source"
-    fi
-}
-
-function add_system_logs {
-    log_info "Adding various system logs"
-    log_warning "It is expected for some of these to fail"
-
-    INDEX="system"
-    # add_monitor "/etc/services" "$INDEX"
-    # add_monitor "/etc/systemd/" "$INDEX"
-    # add_monitor "/etc/init.d/" "$INDEX"
-    # add_monitor "/etc/profile.d/" "$INDEX"
-    # add_monitor "/var/log/cron" "$INDEX" # this probably won't exist by default
-    add_monitor "/var/log/syslog" "$INDEX"
-    add_monitor "/var/log/messages" "$INDEX"
-    add_monitor "/var/log/auth.log" "$INDEX"
-    add_monitor "/var/log/secure" "$INDEX"
-    add_monitor "/var/log/audit/audit.log" "$INDEX"
-
-    INDEX="misc"
-    # add_monitor "/tmp/" "$INDEX"
-}
-
-function add_firewall_logs {
-    log_info "Adding firewall logs"
-    INDEX="network"
-    
-    if sudo command -v firewalld &>/dev/null; then
-        log_info "firewalld detected"
-        FIREWALL_LOG="/var/log/firewalld"
-
-        log_info "Enabling firewalld logging"
-        sudo firewall-cmd --set-log-denied=all
-
-        log_info "Adding firewalld error logs"
-        add_monitor "$FIREWALL_LOG" "$INDEX"
-        log_info "firewalld access logs contained in /var/log/messages (already added)"
-    elif sudo command -v ufw &>/dev/null; then
-        log_info "ufw detected"
-        FIREWALL_LOG="/var/log/ufw.log"
-
-        log_info "Enabling ufw logging"
-        sudo ufw logging low
-        # Log all existing rules
-        sudo ufw status | awk '/^[0-9]/ { print $1 }' | while read -r INPUT; do sudo ufw allow log "$INPUT"; done
-
-        log_info "Adding monitors for ufw logs"
-        # sudo touch "$FIREWALL_LOG"
-        add_monitor "$FIREWALL_LOG" "$INDEX"
-        log_info "ufw logs also contained in /var/log/syslog"
-    elif sudo command -v iptables &>/dev/null; then
-        # TODO: make this the main option and make it actually work with harden.sh
-        log_info "iptables detected"
-        FIREWALL_LOG="/var/log/iptables.log"
-
-        log_info "Enabling iptables logging"
-        LOGGING_LEVEL=1
-        # Not sure if the order of where this rule is placed in the chain matters or not
-        sudo iptables -A INPUT -j LOG --log-prefix "[iptables] CHAIN=INPUT ACTION=DROP: " --log-level $LOGGING_LEVEL
-        # sudo iptables -A OUTPUT -j LOG --log-prefix "iptables: " --log-level $LOGGING_LEVEL
-        # sudo iptables -A FORWARD -j LOG --log-prefix "iptables: " --log-level $LOGGING_LEVEL
-        
-        log_info "Adding monitors for iptables"
-        # sudo touch "$FIREWALL_LOG"
-        add_monitor "$FIREWALL_LOG" "$INDEX"
-    else
-        log_error "No firewall found. Please forward logs manually."
-    fi
-}
-
-function add_package_logs {
-    log_info "Adding package logs"
-    
-    INDEX="misc"
-    if command -v dpkg &>/dev/null; then
-        log_debug "Adding monitors for dpkg logs"
-        PACKAGE_LOGS="/var/log/dpkg.log"
-        add_monitor "$PACKAGE_LOGS" "$INDEX"
-    fi
-
-    if command -v apt &>/dev/null; then
-        log_debug "Adding monitors for apt logs"
-        PACKAGE_LOGS="/var/log/apt/history.log"
-        add_monitor "$PACKAGE_LOGS" "$INDEX"
-    fi
-
-    if command -v dnf &>/dev/null; then
-        log_debug "Adding monitors for dnf logs"
-        PACKAGE_LOGS="/var/log/dnf.rpm.log"
-        add_monitor "$PACKAGE_LOGS" "$INDEX"
-    fi
-
-    if command -v yum &>/dev/null; then
-        log_debug "Adding monitors for yum logs"
-        PACKAGE_LOGS="/var/log/yum.log"
-        add_monitor "$PACKAGE_LOGS" "$INDEX"
-    fi
-
-    if command -v zypper &>/dev/null; then
-        log_debug "Adding monitors for zypper logs"
-        PACKAGE_LOGS="/var/log/zypp/history"
-        add_monitor "$PACKAGE_LOGS" "$INDEX"
-    fi
-}
-
-# function add_ssh_key_logs {
-#     log_info "Adding user ssh key logs"
-#     INDEX="system"
-#     for dir in /home/*; do
-#         if [ -d "$dir" ]; then
-#             if [ -d "$dir/.ssh" ]; then
-#                 log_debug "Adding $dir/.ssh/"
-#                 add_monitor "$dir/.ssh" "$INDEX"
-#             fi
-#         fi
-#     done
-# }
-
-function add_web_logs {
-    log_info "Looking for web logs"
-
-    INDEX="web"
-    if [ -d "/var/log/apache2/" ]; then
-        log_debug "Adding monitors for apache logs"
-        APACHE_ACCESS="/var/log/apache2/access.log"
-        APACHE_ERROR="/var/log/apache2/error.log"
-        WAF="/var/log/apache2/modsec_audit.log"
-        add_monitor "$APACHE_ACCESS" "$INDEX"
-        add_monitor "$APACHE_ERROR" "$INDEX"
-        add_monitor "$WAF" "$INDEX"
-    elif [ -d "/var/log/httpd/" ]; then
-        log_debug "Adding monitors for httpd logs"
-        APACHE_ACCESS="/var/log/httpd/access_log"
-        APACHE_ERROR="/var/log/httpd/error_log"
-        WAF="/var/log/httpd/modsec_audit.log"
-        add_monitor "$APACHE_ACCESS" "$INDEX"
-        add_monitor "$APACHE_ERROR" "$INDEX"
-        add_monitor "$WAF" "$INDEX"
-    elif [ -d "/var/log/lighttpd/" ]; then
-        log_debug "Adding monitor for lighttpd error logs"
-        # LIGHTTPD_ACCESS="/var/log/lighhtpd/access.log"
-        LIGHTTPD_ERROR="/var/log/lighttpd/error.log"
-        # add_monitor "$LIGHTTPD_ACCESS" "$INDEX"
-        add_monitor "$LIGHTTPD_ERROR" "$INDEX"
-        log_warning "Please manually modify lighttpd config file in /etc/lighttpd/lighttpd.conf."
-        log_warning "Add \"mod_accesslog\" in server.modules, and at the bottom of the file add \`accesslog.filename = \"/var/log/lighttpd/access.log\"\`"
-        log_warning "Then, add a Splunk monitor for /var/log/lighttpd/access.log"
-    elif [ -d "/var/log/nginx" ]; then
-        log_debug "Adding monitors for Nginx logs"
-        NGINX_ACCESS="/var/log/nginx/access.log"
-        NGINX_ERROR="/var/log/nginx/error.log"
-        add_monitor "$NGINX_ACCESS" "$INDEX"
-        add_monitor "$NGINX_ERROR" "$INDEX"
-    else
-        log_info "Did not find webserver (Apache, Nginx, or lighttpd) on this system."
-    fi
-}
-
-function add_mysql_logs {
-    log_info "Looking for MySQL logs"
-
-    INDEX="web"
-    MYSQL_CONFIG="/etc/mysql/my.cnf" # Adjust the path based on your system
-
-    if [ -f "$MYSQL_CONFIG" ]; then
-        # Make sure there's actually a MySQL or MariaDB service
-        if command -v systemctl &> /dev/null; then
-            if ! sudo systemctl status mysql &> /dev/null && ! sudo systemctl status mariadb &> /dev/null; then
-                log_warning "Found MySQL config file but unable to detect MySQL or MariaDB service; no logs added"
-                return
-            fi
-        elif command -v service &> /dev/null; then
-            if ! sudo service mysql status &> /dev/null && ! sudo service mariadb status &> /dev/null; then
-                log_warning "Found MySQL config file but unable to detect MySQL or MariaDB service; no logs added"
-                return
-            fi
-        else
-            log_warning "Found MySQL config file but unable to detect MySQL or MariaDB service; no logs added"
-                return
-        fi
-        log_debug "Adding monitors for MySQL logs"
-
-        # Log file paths
-        GENERAL_LOG="/var/log/mysql/mysql.log"
-        ERROR_LOG="/var/log/mysql/error.log"
-
-        # Enable General Query Log
-        echo "[mysqld]" | sudo tee -a "$MYSQL_CONFIG" > /dev/null
-        echo "general_log = 1" | sudo tee -a "$MYSQL_CONFIG" > /dev/null
-        echo "general_log_file = $GENERAL_LOG" | sudo tee -a "$MYSQL_CONFIG" > /dev/null
-
-        # Enable Error Log
-        echo "log_error = $ERROR_LOG" | sudo tee -a "$MYSQL_CONFIG" > /dev/null
-
-        # Restart MySQL service
-        if command -v systemctl &> /dev/null; then
-            sudo systemctl restart mysql
-        elif command -v service &> /dev/null; then
-            sudo service mysql restart
-        else
-            log_error "Unable to restart MySQL. Please restart the MySQL service manually."
-        fi
-
-        # sudo touch "$GENERAL_LOG"
-        # sudo touch "$ERROR_LOG"
-        add_monitor "$GENERAL_LOG" "$INDEX"
-        add_monitor "$ERROR_LOG" "$INDEX"
-    else
-        log_info "Did not find MySQL on this system."
-    fi
-}
-
-# Adds scripted inputs
-function add_scripts {
-    log_info "Adding scripted inputs"
-    # TOOD: add this to the add-on inputs.conf instead
-    log_debug "Adding user sessions script"
-    add_script $SPLUNK_HOME/etc/apps/ccdc-add-on/bin/sessions.sh "system" "180" "ccdc-sessions"
-    log_debug "Adding package integrity verification"
-    sudo chown root:$SPLUNK_USERNAME $SPLUNK_HOME/etc/apps/ccdc-add-on/bin/package-check.sh
-    sudo chmod 750 $SPLUNK_HOME/etc/apps/ccdc-add-on/bin/package-check.sh
-    sudo chmod u+s $SPLUNK_HOME/etc/apps/ccdc-add-on/bin/package-check.sh
-    add_script $SPLUNK_HOME/etc/apps/ccdc-add-on/bin/package-check.sh "system" "600" "ccdc-package-integrity"
-}
-
-# Adds monitors for the Splunk indexer service itself
-function add_indexer_web_logs {
-    log_info "Adding indexer web logs"
-
-    INDEX="web"
-    SPLUNK_WEB_ACCESS="$SPLUNK_HOME/var/log/splunk/web_access.log"
-
-    log_debug "Adding monitors for Splunk web logs"
-    add_monitor "$SPLUNK_WEB_ACCESS" "$INDEX"
-}
-
-# Asks the user to specify additional logs to add
-function add_additional_logs {
-    log_info "Adding additional logs"
-
-    log_info "Indexes: ${INDEXES[*]}"
-    option=$(get_input_string "Would you like to add any additional monitors? (y/N): " | tr -d ' ')    # truncate any spaces accidentally put in
-    if [ "$option" == "y" ]; then
-        for index in "${INDEXES[@]}"; do
-            option=$(get_input_string "Would you like to add additional sources for index '$index'? (y/N): " | tr -d ' ')
-
-            sources=()
-            continue="true"
-            if [ "$option" == "y" ]; then
-                while [ "$continue" != "false" ]; do
-                    userInput=$(get_input_string "Enter additional logs sources: (one entry per line; enter blank line to finish): " | tr -d ' ')
-                    if [[ "$userInput" == "" ]]; then
-                        continue="false"
-                    else
-                        sources+=("$userInput")
-                    fi
-                    # TODO: check that file exists during input loop
-                done
-                for source in "${sources[@]}"; do
-                    add_monitor "$source" "$index"
-                done
-            fi
-        done
-    fi
-}
-
-function setup_monitors {
-    print_banner "Adding Monitors"
-
-    # Add monitors
-    add_system_logs
-    # add_firewall_logs
-    add_package_logs
-    # add_ssh_key_logs
-    add_web_logs
-    add_mysql_logs
-
-    log_info "Installing CCDC Splunk add-on"
-    install_app "$GITHUB_URL/splunk/ccdc-add-on.spl"
-
-    add_scripts
-
-    if [ "$INDEXER" == true ]; then
-        add_indexer_web_logs
     fi
 }
 
@@ -1304,7 +1019,6 @@ function install_auditd {
 
     sudo setfacl -Rm g:$SPLUNK_USERNAME:rx /var/log/audit/
     sudo setfacl -Rdm g:$SPLUNK_USERNAME:rx /var/log/audit/
-    add_monitor "/var/log/audit/audit.log" "system"
     AUDITD_SUCCESSFUL=true
 }
 
@@ -1315,7 +1029,6 @@ function install_snoopy {
     log_info "Installing Snoopy (trying version $version)"
     if sudo [ -e /usr/local/lib/libsnoopy.so ]; then
         log_info "Snoopy is already installed"
-        add_monitor "$SNOOPY_LOG" "snoopy" "snoopy"
         return 0
     fi
 
@@ -1354,8 +1067,9 @@ function install_snoopy {
             # Unfortunately required by snoopy in order to use a log file other than syslog/messages
             sudo chmod 622 $SNOOPY_LOG
             sudo setfacl -m g:$SPLUNK_USERNAME:r /var/log/snoopy.log
-            echo "filter_chain = \"exclude_spawns_of:splunkd,btool\"" | sudo tee -a $SNOOPY_CONFIG > /dev/null
+            echo 'filter_chain = "exclude_spawns_of:splunkd,btool"' | sudo tee -a $SNOOPY_CONFIG > /dev/null
             echo "output = file:$SNOOPY_LOG" | sudo tee -a $SNOOPY_CONFIG > /dev/null
+            echo 'message_format = "\{\"cgroup\":\"%{cgroup:PATTERN}\",\"cmdline\":\"%{cmdline}\",\"cwd\":\"%{cwd}\",\"datetime\":\"%{datetime:fmt}\",\"domain\":\"%{domain}\",\"egid\":\"%{egid}\",\"egroup\":\"%{egroup}\",\"env\":\"%{env:VAR}\",\"env_all\":\"%{env_all}\",\"euid\":\"%{euid}\",\"eusername\":\"%{eusername}\",\"filename\":\"%{filename}\",\"gid\":\"%{gid}\",\"group\":\"%{group}\",\"hostname\":\"%{hostname}\",\"ipaddr\":\"%{ipaddr}\",\"login\":\"%{login}\",\"pid\":\"%{pid}\",\"ppid\":\"%{ppid}\",\"rpname\":\"%{rpname}\",\"sid\":\"%{sid}\",\"snoopy_configure_command\":\"%{snoopy_configure_command}\",\"snoopy_threads\":\"%{snoopy_threads}\",\"snoopy_version\":\"%{snoopy_version}\",\"snoopy_literal\":\"%{snoopy_literal:arg}\",\"systemd_unit_name\":\"%{systemd_unit_name}\",\"tid\":\"%{tid}\",\"tid_kernel\":\"%{tid_kernel}\",\"timestamp\":\"%{timestamp}\",\"timestamp_ms\":\"%{timestamp_ms}\",\"timestamp_us\":\"%{timestamp_us}\",\"tty\":\"%{tty}\",\"tty_uid\":\"%{tty_uid}\",\"tty_username\":\"%{tty_username}\",\"uid\":\"%{uid}\",\"username\":\"%{username}\"\}"' | sudo tee -a $SNOOPY_CONFIG > /dev/null
             echo
             log_debug "Set Snoopy output to $SNOOPY_LOG."
             # Restart snoopy
@@ -1368,7 +1082,6 @@ function install_snoopy {
         log_info "Snoopy installed successfully."
         log_warning "NOTE: Unless you restart the server, Snoopy may not pick up on commands from existing processes."
         # see https://github.com/a2o/snoopy/issues/212
-        add_monitor "$SNOOPY_LOG" "snoopy" "snoopy"
         SNOOPY_SUCCESSFUL=true
         return 0
     fi
@@ -1406,47 +1119,6 @@ function install_sysmon {
         return 1
     fi
 }
-
-function install_ossec {
-    log_info "Installing OSSEC"
-    download "$GITHUB_URL/ossec/ossec.sh" ossec.sh
-    chmod +x ossec.sh
-
-    cmd="./ossec.sh "
-    if [[ "$LOCAL" == true ]]; then
-        cmd+="-l $GITHUB_URL "
-    else
-        cmd+="-g $GITHUB_URL "
-    fi
-
-    if [[ "$INDEXER" == true ]]; then
-        cmd+="-i $IP"
-    else
-        cmd+="-f $IP"
-    fi
-
-    eval $cmd
-
-    if [ $? -eq 0 ]; then
-        log_info "OSSEC installed successfully"
-        OSSEC_DIR="/var/ossec"
-        if [[ "$INDEXER" == true ]]; then
-            sudo setfacl -Rm g:$SPLUNK_USERNAME:rx $OSSEC_DIR/
-            sudo setfacl -Rm g:$SPLUNK_USERNAME:rx $OSSEC_DIR/logs/
-            sudo setfacl -Rm g:$SPLUNK_USERNAME:rx $OSSEC_DIR/logs/alerts/
-            sudo setfacl -Rdm g:$SPLUNK_USERNAME:rx $OSSEC_DIR/logs/alerts/
-            sudo setfacl -Rm g:$SPLUNK_USERNAME:rx $OSSEC_DIR/logs/firewall/
-            sudo setfacl -Rdm g:$SPLUNK_USERNAME:rx $OSSEC_DIR/logs/firewall/
-            add_monitor "$OSSEC_DIR/logs/ossec.log" "ossec" "ossec_log"
-            add_monitor "$OSSEC_DIR/logs/alerts/alerts.log" "ossec" "ossec_alert"
-            add_monitor "$OSSEC_DIR/logs/firewall/firewall.log" "ossec" "ossec_firewall"
-        fi
-        OSSEC_SUCCESSFUL=true
-    else
-        log_error "OSSEC installation failed"
-        return 1
-    fi
-}
 #####################################################
 
 ######################## MAIN #######################
@@ -1458,78 +1130,72 @@ function main {
     autodetect_os
     install_dependencies
 
-    if [ "$ADDITIONAL_LOGGING_ONLY" == false ]; then
-        setup_splunk
+    setup_splunk
 
-        setup_monitors
-        # add_additional_logs
+    log_info "Installing Nix Add-on"
+    install_app "$GITHUB_URL/splunk/linux/Splunk_TA_nix.spl"
 
-        print_banner "Finalizing Setup"
-        sudo -H -u $SPLUNK_USERNAME $SPLUNK_HOME/bin/splunk stop
-        if command -v systemctl &> /dev/null; then
-            log_debug "Enabling start on boot with systemd"
-            sudo $SPLUNK_HOME/bin/splunk enable boot-start -systemd-managed 1 -user $SPLUNK_USERNAME
-            if [ "$INDEXER" == true ]; then
-                sudo systemctl enable Splunkd
-                sudo systemctl start Splunkd
-            else
-                sudo systemctl enable SplunkForwarder
-                sudo systemctl start SplunkForwarder
-            fi
-        else
-            log_debug "Not a systemd machine; using splunk start"
-            sudo -H -u $SPLUNK_USERNAME $SPLUNK_HOME/bin/splunk start
-        fi
+    log_info "Installing CCDC Add-on"
+    install_app "$GITHUB_URL/splunk/ccdc-add-on.spl"
 
-        echo
+    if [ "$INDEXER" == true ]; then
+        log_info "Adding monitors for Splunk web logs"
+        add_monitor "$SPLUNK_HOME/var/log/splunk/web_access.log" "web"
     fi
 
-    if [ "$SPLUNK_ONLY" == false ]; then
-        print_banner "Installing Additional Logging Sources"
-        log_info "Installing:"
-        echo "   - auditd (file monitor)"
-        echo "   - snoopy (command logger)"
-        echo "   - sysmon (system and network monitor)"
+    print_banner "Installing Additional Logging Sources"
+    log_info "Installing:"
+    echo "   - auditd (file monitor)"
+    echo "   - snoopy (command logger)"
+    # echo "   - sysmon (system and network monitor)"
+    
+    install_auditd
 
-        # if [ "$SPLUNK_PASSWORD" != "" ]; then
-        #     sudo -H -u $SPLUNK_USERNAME $SPLUNK_HOME/bin/splunk login -auth "$SPLUNK_USERNAME:$SPLUNK_PASSWORD"
-        # fi
-        install_auditd
-
-        # sudo $PM install -qq -y snoopy 2>/dev/null
-        # if [ $? -ne 0 ]; then
-            # log_debug "Could not find snoopy in package repos; attempting manual installation"
-            if ! install_snoopy "2.5.2"; then
-                if ! install_snoopy "2.4.15"; then
-                    if ! install_snoopy "2.3.2"; then
-                        log_error "Failed to install Snoopy"
-                    fi
+    # if [ $? -ne 0 ]; then
+        # log_debug "Could not find snoopy in package repos; attempting manual installation"
+        if ! install_snoopy "2.5.2"; then
+            if ! install_snoopy "2.4.15"; then
+                if ! install_snoopy "2.3.2"; then
+                    log_error "Failed to install Snoopy"
                 fi
             fi
-        # else
-            # add_monitor "$SNOOPY_LOG" "snoopy" "snoopy"
-            # SNOOPY_SUCCESSFUL=true
-            # log_info "Snoopy installed successfully from package repos"
-        # fi
-        # install_sysmon
-        # install_ossec
+        fi
+    # else
+        # add_monitor "$SNOOPY_LOG" "snoopy" "snoopy"
+        # SNOOPY_SUCCESSFUL=true
+        # log_info "Snoopy installed successfully from package repos"
+    # fi
+
+    # install_sysmon
+    
+    print_banner "Finalizing Splunk Setup"
+    sudo -H -u $SPLUNK_USERNAME $SPLUNK_HOME/bin/splunk stop
+    if command -v systemctl &> /dev/null; then
+        log_debug "Enabling start on boot with systemd"
+        sudo $SPLUNK_HOME/bin/splunk enable boot-start -systemd-managed 1 -user $SPLUNK_USERNAME
+        if [ "$INDEXER" == true ]; then
+            sudo systemctl enable Splunkd
+            sudo systemctl start Splunkd
+        else
+            sudo systemctl enable SplunkForwarder
+            sudo systemctl start SplunkForwarder
+        fi
     else
-        log_info "Skipping installation of additional logging sources"
+        log_debug "Not a systemd machine; using splunk start"
+        sudo -H -u $SPLUNK_USERNAME $SPLUNK_HOME/bin/splunk start
     fi
+
+    echo
 
     log_info "Finished!"
 
     print_banner "Summary"
     log_info "A debug log is located at $LOG"
-    log_info "You can add additional monitors with this script."
-    echo "   Usage: ./splunk.sh -a <LOG_PATH>"
-    # log_info "Add future additional scripted inputs with 'sudo -H -u $SPLUNK_USERNAME $SPLUNK_HOME/bin/splunk add exec $SPLUNK_HOME/etc/apps/ccdc-add-on/bin/<SCRIPT> -interval <SECONDS> -index <INDEX>'"
     echo
     echo "Summary of installation:"
     echo "   Auditd successful? $(print_true_false $AUDITD_SUCCESSFUL)"
     echo "   Snoopy successful? $(print_true_false $SNOOPY_SUCCESSFUL)"
     # echo "   Sysmon successful? $SYSMON_SUCCESSFUL"
-    # echo "   OSSEC successful? $OSSEC_SUCCESSFUL"
     echo "   Added monitors for: "
     for item in "${SUCCESSFUL_MONITORS[@]}"; do
         echo "    - $item"
