@@ -1,4 +1,7 @@
 #!/bin/bash
+# Common functions and variables to be used in Linux scripts
+# Be very cautious editing functions here - make sure to test any changes thoroughly, as they may affect multiple scripts.
+
 # ANSI color codes
 NORMAL=0
 BOLD=1
@@ -294,4 +297,34 @@ function get_silent_input_string {
 function get_input_string {
     read -r -p "$1" input
     echo "$input"
+}
+
+function get_password {
+    min_length=${1:-8}
+
+    while true; do
+        password=""
+        confirm_password=""
+
+        # Ask for password
+        password=$(get_silent_input_string "Password: ")
+        echo
+
+        # Confirm password
+        confirm_password=$(get_silent_input_string "Confirm password: ")
+        echo
+
+        if [ "$password" != "$confirm_password" ]; then
+            echo "Passwords do not match. Please retry."
+            continue
+        fi
+
+        if [ "${#password}" -lt $min_length ]; then
+            echo "Password must be at least $min_length characters long. Please retry."
+            continue
+        fi
+
+        break
+    done
+    return "$password"
 }
