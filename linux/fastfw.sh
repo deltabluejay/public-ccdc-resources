@@ -34,6 +34,7 @@ if command -v systemctl >/dev/null 2>&1; then
     fi
 fi
 
+# TODO: preserve docker rules
 if [ "$(iptables --list-rules | wc -l)" -gt 3 ]; then
     echo 'It looks like there are already some firewall rules. Do you want to remove them? (y/N)'
     yesno n && iptables -F
@@ -48,13 +49,23 @@ iptables -A OUTPUT -o lo -j ACCEPT
 iptables -A INPUT -p icmp --icmp-type echo-request -j ACCEPT
 iptables -A OUTPUT -p icmp --icmp-type echo-reply -j ACCEPT
 
-echo 'Splunk indexer IP: '
-read SPLUNK_IP
-iptables -A OUTPUT -d $SPLUNK_IP -p tcp --dport 9997 -j ACCEPT
-# iptables -A OUTPUT -d $SPLUNK_IP -p udp --dport 1514 -j ACCEPT
-# iptables -A OUTPUT -d $SPLUNK_IP -p udp --dport 1515 -j ACCEPT
+echo 'Would you like to allow traffic to Splunk? (Y/n)'
+yesno y && {
+    echo 'Splunk indexer IP:'
+    read SPLUNK_IP
+    iptables -A OUTPUT -d $SPLUNK_IP -p tcp --dport 9997 -j ACCEPT
+    # iptables -A OUTPUT -d $SPLUNK_IP -p udp --dport 1514 -j ACCEPT
+    # iptables -A OUTPUT -d $SPLUNK_IP -p udp --dport 1515 -j ACCEPT
+}
 
-echo 'DNS Server IPs: (OUTPUT udp/53)'
+echo 'Would you like to allow traffic to a syslog server? (y/N)'
+yesno n && {
+    echo 'Syslog server IP:'
+    read SYSLOG_IP
+    iptables -A OUTPUT -d $SYSLOG_IP --dport 514 -j ACCEPT
+}
+
+echo 'Space-separated list of DNS Server IPs (OUTPUT udp/53):'
 read DNS_IPS
 for ip in $DNS_IPS; do
     iptables -A OUTPUT -d $ip -p udp --dport 53 -j ACCEPT
@@ -67,7 +78,7 @@ yesno y && {
 
 for CHAIN in INPUT OUTPUT; do
     for PROTO in tcp udp; do
-        echo "Space-seperated list of $CHAIN $PROTO ports/services:"
+        echo "Space-separated list of $CHAIN $PROTO ports/services:"
         genPortList $CHAIN $PROTO
     done
 done
@@ -86,11 +97,11 @@ yesno n && {
     echo 'IP or subnet: '
     read IP
     for PROTO in tcp udp; do
-        echo "Space-seperated list of INPUT $PROTO ports/services from whitelisted IP/subnet:"
+        echo "Space-separated list of INPUT $PROTO ports/services from whitelisted IP/subnet:"
         genPortList INPUT $PROTO "-s $IP"
     done
     for PROTO in tcp udp; do
-        echo "Space-seperated list of OUTPUT $PROTO ports/services to whitelisted IP/subnet:"
+        echo "Space-separated list of OUTPUT $PROTO ports/services to whitelisted IP/subnet:"
         genPortList OUTPUT $PROTO "-d $IP"
     done
 }
